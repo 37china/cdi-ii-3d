@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CDI II 3D — modelos interativos</title>
+<meta name="description" content="Modelos 3D interativos de Cálculo Diferencial e Integral II: topologia, diferenciabilidade, extremos, Lagrange, integrais múltiplos, mudança de variáveis, Green.">
+<meta name="theme-color" content="#2E6B4F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CDI II 3D">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css?v=1">
+</head>
+<body class="home">
+<div id="veu"></div>
+<aside id="nav" aria-label="Matérias">
+  <a class="marca" href="#/"><b>CDI II 3D</b><span>Teóricas · Alameda</span></a>
+  <nav id="lista"></nav>
+  <button type="button" id="btema" class="btn fino">Tema: automático</button>
+</aside>
+<div id="main">
+  <header class="topo">
+    <button type="button" id="bmenu" aria-label="Abrir a lista de matérias">☰</button>
+    <div class="tt">
+      <p id="kicker"></p>
+      <h1 id="titulo"></h1>
+    </div>
+    <div id="modos" class="seg" role="group" aria-label="Modo" hidden></div>
+  </header>
+  <div id="modelos" class="chips mods"></div>
+  <main id="corpo"></main>
+</div>
+<script src="js/math.js?v=1"></script>
+<script src="js/vista3d.js?v=1"></script>
+<script src="js/plano.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+<script src="js/materias/01-topologia.js?v=1"></script>
+<script src="js/materias/02-diferenciabilidade.js?v=1"></script>
+<script src="js/materias/03-cadeia.js?v=1"></script>
+<script src="js/materias/04-gradiente.js?v=1"></script>
+<script src="js/materias/05-hessiana.js?v=1"></script>
+<script src="js/materias/06-inversa.js?v=1"></script>
+<script src="js/materias/07-lagrange.js?v=1"></script>
+<script src="js/materias/08-integrais.js?v=1"></script>
+<script src="js/materias/09-mudanca.js?v=1"></script>
+<script src="js/materias/10-coordenadas.js?v=1"></script>
+<script src="js/materias/11-green.js?v=1"></script>
+<script src="js/materias/12-superficies.js?v=1"></script>
+</body>
+</html>
