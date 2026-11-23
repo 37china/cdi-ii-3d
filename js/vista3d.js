@@ -1,50 +1,135 @@
-/* Motor 3D em canvas 2D: projeção em perspetiva leve, algoritmo do pintor e sombreamento.
-   Sem WebGL nem bibliotecas, para abrir em qualquer browser e funcionar offline. */
+/* Motor 3D em WebGL (three.js, guardado em vendor/). Mantém a API simples que as matérias usam:
+   cada redesenho chama cena(C) e C.linha, C.sup, C.seta, … constroem a geometria.
+   Rótulos em HTML por cima do canvas, com KaTeX quando o texto começa por $. */
 (function () {
-  const { add, sub, mul, dot, cross, len, nrm, clamp } = CM;
+  const T = window.T3;
+  const { add, sub, mul, cross, len, nrm, clamp } = CM;
 
   function cssVar(n, f) { const v = getComputedStyle(document.documentElement).getPropertyValue(n).trim(); return v || f; }
-  function rgb(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (a == null ? 1 : a) + ')'; }
   function hexRgb(h) {
     if (Array.isArray(h)) return h;
+    h = String(h).trim();
+    if (h.startsWith('rgb')) { const m = h.match(/[\d.]+/g).map(Number); return [m[0], m[1], m[2]]; }
     h = h.replace('#', '');
     if (h.length === 3) h = h.split('').map((c) => c + c).join('');
-    const n = parseInt(h, 16);
+    const n = parseInt(h.slice(0, 6), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
   window.hexRgb = hexRgb;
+  const col = (c) => { const [r, g, b] = hexRgb(c); return new T.Color().setRGB(r / 255, g / 255, b / 255, T.SRGBColorSpace); };
+
+  /* mapa de cores por altura: azul-escuro → azul → quase branco */
+  const MAPA = [[46, 40, 120], [37, 99, 235], [34, 190, 230], [214, 250, 255]];
+  function mapa(t) {
+    t = clamp(t, 0, 1) * (MAPA.length - 1);
+    const i = Math.min(MAPA.length - 2, Math.floor(t)), f = t - i;
+    return MAPA[i].map((a, k) => a + (MAPA[i + 1][k] - a) * f);
+  }
+  window.mapaAltura = mapa;
+
+  /* rótulos: «$…$» é TeX; o resto é texto com variáveis em itálico */
+  function htmlRotulo(txt) {
+    if (txt == null) return '';
+    const s = String(txt);
+    if (s.indexOf('$') >= 0 && window.tex) return window.tex(s.replace(/&/g, '&amp;').replace(/</g, '&lt;'));
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  }
 
   class Vista3D {
     constructor(host, opts = {}) {
-      this.opts = Object.assign({ ext: 1.6, alvo: [0, 0, 0], yaw: 0.7, pitch: 0.42, dica: 'Arrasta para rodar · pinça ou Ctrl + roda para zoom' }, opts);
-      this.cam = { yaw: this.opts.yaw, pitch: this.opts.pitch, zoom: 1 };
+      this.opts = Object.assign({ ext: 1.6, alvo: [0, 0, 0], yaw: 0.7, pitch: 0.42, dica: 'Arrasta para rodar · pinça ou Ctrl + roda para zoom · botão direito para deslocar' }, opts);
       this.el = document.createElement('div');
-      this.el.className = 'vista';
-      this.el.innerHTML = '<canvas></canvas><div class="vdica"></div><div class="vbtns"><button type="button" data-z="1" aria-label="Aproximar">+</button><button type="button" data-z="-1" aria-label="Afastar">−</button><button type="button" data-r aria-label="Repor a vista">↺</button></div>';
+      this.el.className = 'vista v3';
+      this.el.innerHTML = '<div class="vdica"></div><div class="vbtns"><button type="button" data-z="1" aria-label="Aproximar">+</button><button type="button" data-z="-1" aria-label="Afastar">−</button><button type="button" data-r aria-label="Repor a vista">↺</button></div>';
       this.el.querySelector('.vdica').textContent = this.opts.dica;
       host.appendChild(this.el);
-      this.cv = this.el.querySelector('canvas');
-      this.ctx = this.cv.getContext('2d');
+
+      const r = (this.renderer = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }));
+      r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      r.outputColorSpace = T.SRGBColorSpace;
+      r.toneMapping = T.NeutralToneMapping;
+      r.toneMappingExposure = 1.05;
+      r.domElement.className = 'gl';
+      this.el.prepend(r.domElement);
+      this.cv = r.domElement;
+      this.lab = new T.CSS2DRenderer();
+      this.lab.domElement.className = 'rotulos';
+      this.el.appendChild(this.lab.domElement);
+
+      this.scene = new T.Scene();
+      this.camera = new T.PerspectiveCamera(30, 1, 0.01, 200);
+      this.camera.up.set(0, 0, 1);
+      this.scene.add(new T.HemisphereLight(0xdfe9ff, 0x1a2233, 1.25));
+      const k1 = new T.DirectionalLight(0xffffff, 2.1); k1.position.set(3, -4, 6); this.scene.add(k1);
+      const k2 = new T.DirectionalLight(0x9fb8ff, 0.7); k2.position.set(-5, 3, 2); this.scene.add(k2);
+      this.dyn = new T.Group();
+      this.scene.add(this.dyn);
+
+      this.alcas = [];
+      this.linhas = [];
       this.cena = null;
-      this.prims = [];
-      this.rot = [];
-      this.pend = false;
-      this.toque = null;
-      this._eventos();
+      this.sujo = true;
+      this._arrastos();
+      this.controls = new T.OrbitControls(this.camera, r.domElement);
+      Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.09, rotateSpeed: 0.75, zoomSpeed: 0.9, screenSpacePanning: true });
+      this.controls.addEventListener('change', () => (this.sujo = true));
+      // a roda do rato só faz zoom com Ctrl (ou na pinça do trackpad); senão deixa a página fazer scroll
+      this.el.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) e.stopPropagation(); }, { capture: true });
+      this.el.querySelector('.vbtns').addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.r !== undefined) this.repor();
+        else this._zoom(b.dataset.z === '1' ? 1 / 1.2 : 1.2);
+      });
+      this.repor();
       this.ro = new ResizeObserver(() => this.tamanho());
       this.ro.observe(this.el);
       this.tamanho();
+      this.vivo = true;
+      const tick = () => {
+        if (!this.vivo) return;
+        this.controls.update();
+        if (this.sujo) { this.sujo = false; this.renderer.render(this.scene, this.camera); this.lab.render(this.scene, this.camera); }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
     }
-    destruir() { this.ro.disconnect(); this.el.remove(); }
+    destruir() {
+      this.vivo = false;
+      this.ro.disconnect();
+      this._limpar();
+      this.controls.dispose();
+      this.renderer.dispose();
+      try { this.renderer.forceContextLoss(); } catch (e) { /* ignorar */ }
+      this.el.remove();
+    }
+    _zoom(f) {
+      const c = this.camera.position, t = this.controls.target;
+      const d = c.clone().sub(t).multiplyScalar(f);
+      c.copy(t).add(d);
+      this.sujo = true;
+    }
+    repor() { this.vistaDe(this.opts.yaw, this.opts.pitch); }
+    vistaDe(yaw, pitch) {
+      const a = this.opts.alvo, d = this.opts.ext * (this.opts.dist || 3.9);
+      this.controls.target.set(a[0], a[1], a[2]);
+      this.camera.position.set(a[0] + d * Math.cos(pitch) * Math.cos(yaw), a[1] + d * Math.cos(pitch) * Math.sin(yaw), a[2] + d * Math.sin(pitch));
+      this.camera.lookAt(this.controls.target);
+      this.sujo = true;
+    }
+    get cam() { // compatibilidade com o código antigo
+      const v = this.camera.position.clone().sub(this.controls.target);
+      return { yaw: Math.atan2(v.y, v.x), pitch: Math.asin(v.z / v.length()), zoom: 1 };
+    }
     tamanho() {
-      const dpr = window.devicePixelRatio || 1;
       const r = this.el.getBoundingClientRect();
-      this.W = Math.max(50, r.width);
-      this.H = Math.max(50, r.height);
-      this.cv.width = Math.round(this.W * dpr);
-      this.cv.height = Math.round(this.H * dpr);
-      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      this.desenhar();
+      this.W = Math.max(50, r.width); this.H = Math.max(50, r.height);
+      this.renderer.setSize(this.W, this.H, false);
+      this.lab.setSize(this.W, this.H);
+      this.camera.aspect = this.W / this.H;
+      this.camera.updateProjectionMatrix();
+      this.linhas.forEach((m) => m.resolution.set(this.W, this.H));
+      this.sujo = true;
     }
     definirCena(fn) { this.cena = fn; this.pedir(); }
     pedir() {
@@ -52,276 +137,285 @@
       this.pend = true;
       requestAnimationFrame(() => { this.pend = false; this.desenhar(); });
     }
-    repor() { this.cam.yaw = this.opts.yaw; this.cam.pitch = this.opts.pitch; this.cam.zoom = 1; this.pedir(); }
-    vistaDe(yaw, pitch) { this.cam.yaw = yaw; this.cam.pitch = pitch; this.pedir(); }
 
-    /* ---------- projeção ---------- */
-    _view(p) {
-      const q = sub(p, this.opts.alvo);
-      const ca = Math.cos(this.cam.yaw), sa = Math.sin(this.cam.yaw), cb = Math.cos(this.cam.pitch), sb = Math.sin(this.cam.pitch);
-      const u = -q[0] * sa + q[1] * ca, d = q[0] * ca + q[1] * sa;
-      return [u, q[2] * cb - d * sb, d * cb + q[2] * sb];
-    }
-    _vec(v) { // rotação sem translação
-      const ca = Math.cos(this.cam.yaw), sa = Math.sin(this.cam.yaw), cb = Math.cos(this.cam.pitch), sb = Math.sin(this.cam.pitch);
-      const u = -v[0] * sa + v[1] * ca, d = v[0] * ca + v[1] * sa;
-      return [u, v[2] * cb - d * sb, d * cb + v[2] * sb];
-    }
-    proj(p) {
-      const q = this._view(p);
-      const F = this.opts.ext * 7;
-      const s = F / (F - q[2]);
-      const K = (Math.min(this.W, this.H * 1.25) / (2.25 * this.opts.ext)) * this.cam.zoom;
-      return [this.W / 2 + q[0] * s * K, this.H / 2 - q[1] * s * K, q[2]];
-    }
-    /* ponto do plano z = z0 que aparece no pixel (sx, sy) (Newton em 2D) */
-    noPlano(sx, sy, z0 = 0) {
-      let x = this.opts.alvo[0], y = this.opts.alvo[1];
-      for (let i = 0; i < 30; i++) {
-        const p = this.proj([x, y, z0]);
-        const ex = p[0] - sx, ey = p[1] - sy;
-        if (Math.hypot(ex, ey) < 0.05) break;
-        const h = 1e-4;
-        const px = this.proj([x + h, y, z0]), py = this.proj([x, y + h, z0]);
-        const a = (px[0] - p[0]) / h, b = (py[0] - p[0]) / h, c = (px[1] - p[1]) / h, d = (py[1] - p[1]) / h;
-        const det = a * d - b * c;
-        if (Math.abs(det) < 1e-9) return null;
-        x -= (d * ex - b * ey) / det;
-        y -= (-c * ex + a * ey) / det;
-      }
-      return [x, y];
-    }
-
-    /* ---------- interação ---------- */
-    _eventos() {
-      const cv = this.cv;
-      const pts = new Map();
-      let ini = null, mov = 0, pinch = null;
-      cv.addEventListener('pointerdown', (e) => {
+    /* ---------- arrastar pontos no plano horizontal que passa por eles ---------- */
+    _arrastos() {
+      const cv = this.renderer.domElement, ray = new T.Raycaster(), ndc = new T.Vector2();
+      let alca = null, plano = null, ini = null;
+      const setNdc = (e) => { const r = cv.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, this.camera); };
+      cv.addEventListener('pointerdown', (e) => { this.el.querySelector('.vdica').classList.add('fora');
+        ini = [e.clientX, e.clientY];
+        if (!this.alcas.length) return;
+        setNdc(e);
+        const hits = ray.intersectObjects(this.alcas.map((a) => a.mesh), false);
+        if (!hits.length) return;
+        alca = this.alcas.find((a) => a.mesh === hits[0].object);
+        plano = new T.Plane(new T.Vector3(0, 0, 1), -alca.p[2]);
+        this.controls.enabled = false;
         cv.setPointerCapture(e.pointerId);
-        pts.set(e.pointerId, [e.clientX, e.clientY]);
-        if (pts.size === 1) { ini = [e.clientX, e.clientY]; mov = 0; }
-        if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: this.cam.zoom }; }
+        cv.style.cursor = 'grabbing';
+        e.preventDefault();
       });
       cv.addEventListener('pointermove', (e) => {
-        if (!pts.has(e.pointerId)) return;
-        const prev = pts.get(e.pointerId);
-        pts.set(e.pointerId, [e.clientX, e.clientY]);
-        if (pts.size === 2 && pinch) {
-          const [a, b] = [...pts.values()];
-          this.cam.zoom = clamp(pinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d, 0.4, 4);
-          this.pedir();
-          mov = 99;
+        if (!alca) {
+          if (!this.alcas.length || e.buttons) return;
+          setNdc(e);
+          cv.style.cursor = ray.intersectObjects(this.alcas.map((a) => a.mesh), false).length ? 'grab' : '';
           return;
         }
-        const dx = e.clientX - prev[0], dy = e.clientY - prev[1];
-        mov += Math.abs(dx) + Math.abs(dy);
-        if (mov < 4) return;
-        this.cam.yaw -= dx * 0.009;
-        this.cam.pitch = clamp(this.cam.pitch + dy * 0.008, -1.45, 1.52);
-        this.pedir();
+        setNdc(e);
+        const q = new T.Vector3();
+        if (ray.ray.intersectPlane(plano, q)) alca.arr(q.x, q.y);
       });
       const fim = (e) => {
-        if (!pts.has(e.pointerId)) return;
-        pts.delete(e.pointerId);
-        if (pts.size < 2) pinch = null;
-        if (pts.size === 0 && mov < 4 && this.aoTocar && ini) {
-          const r = cv.getBoundingClientRect();
-          this.aoTocar(e.clientX - r.left, e.clientY - r.top);
+        if (alca) { alca = null; this.controls.enabled = true; cv.style.cursor = ''; return; }
+        if (ini && this.aoTocar && Math.hypot(e.clientX - ini[0], e.clientY - ini[1]) < 4) {
+          setNdc(e);
+          const q = new T.Vector3();
+          if (ray.ray.intersectPlane(new T.Plane(new T.Vector3(0, 0, 1), 0), q)) this.aoTocar(q.x, q.y);
         }
+        ini = null;
       };
       cv.addEventListener('pointerup', fim);
       cv.addEventListener('pointercancel', fim);
-      cv.addEventListener('wheel', (e) => {
-        if (!e.ctrlKey && !e.metaKey) return;
-        e.preventDefault();
-        this.cam.zoom = clamp(this.cam.zoom * Math.exp(-e.deltaY * 0.01), 0.4, 4);
-        this.pedir();
-      }, { passive: false });
-      this.el.querySelector('.vbtns').addEventListener('click', (e) => {
-        const b = e.target.closest('button');
-        if (!b) return;
-        if (b.dataset.r !== undefined) this.repor();
-        else { this.cam.zoom = clamp(this.cam.zoom * (b.dataset.z === '1' ? 1.2 : 1 / 1.2), 0.4, 4); this.pedir(); }
-      });
     }
 
-    /* ---------- construção da cena ---------- */
+    _limpar() {
+      const lixo = [];
+      this.dyn.traverse((o) => lixo.push(o));
+      lixo.forEach((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose());
+        if (o.isCSS2DObject && o.element) o.element.remove();
+      });
+      this.dyn.clear();
+      this.alcas = [];
+      this.linhas = [];
+    }
+
+    /* ---------- API de construção ---------- */
     _c() {
-      const V = this;
-      const P = this.prims, R = this.rot;
-      const ext = this.opts.ext;
+      const V = this, G = this.dyn, ext = this.opts.ext;
+      const ink = cssVar('--st-ink', '#e8edf5');
+      const mat = (o, extra = {}) => {
+        const a = o.alfa == null ? 1 : o.alfa;
+        return new T.MeshStandardMaterial(Object.assign({ color: col(o.cor || cssVar('--sup', '#4f8cf0')), roughness: 0.5, metalness: 0.05, side: T.DoubleSide, transparent: a < 1, opacity: a, depthWrite: a > 0.8, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }, extra));
+      };
+      const lmat = (o) => {
+        const m = new T.LineMaterial({ color: col(o.cor || ink), linewidth: (o.larg || 1.6) * 1.15, transparent: (o.alfa != null && o.alfa < 1) || !!o.trac, opacity: o.alfa == null ? 1 : o.alfa, dashed: !!o.trac, dashSize: o.trac ? o.trac[0] * 0.012 * ext : 1, gapSize: o.trac ? o.trac[1] * 0.012 * ext : 1, depthTest: o.sobre ? false : true, worldUnits: false });
+        m.resolution.set(V.W || 800, V.H || 600);
+        V.linhas.push(m);
+        return m;
+      };
+      const linhaGeo = (pts, o) => {
+        const g = new T.LineGeometry();
+        g.setPositions(pts.flat());
+        const m = lmat(o);
+        const L = new T.Line2(g, m);
+        if (o.trac) L.computeLineDistances();
+        if (o.sobre) L.renderOrder = 10;
+        G.add(L);
+        return L;
+      };
       const C = {
         ext,
         cor: (n, f) => cssVar(n, f),
-        linha(a, b, o = {}) {
-          const n = o.n || 8;
-          for (let i = 0; i < n; i++) P.push({ t: 's', pts: [add(a, mul(sub(b, a), i / n)), add(a, mul(sub(b, a), (i + 1) / n))], o });
+        linha(a, b, o = {}) { linhaGeo([a, b], o); },
+        curva(pts, o = {}) {
+          let seg = [];
+          const fl = () => { if (seg.length > 1) linhaGeo(seg, o); seg = []; };
+          for (const p of pts) { if (!p || p.some((x) => !isFinite(x))) fl(); else seg.push(p); }
+          fl();
         },
-        curva(pts, o = {}) { for (let i = 0; i < pts.length - 1; i++) if (pts[i] && pts[i + 1]) P.push({ t: 's', pts: [pts[i], pts[i + 1]], o }); },
+        /* muitos segmentos [[a, b], …] num só objeto */
+        segs(lista, o = {}) {
+          if (!lista.length) return;
+          const g = new T.LineSegmentsGeometry();
+          g.setPositions(lista.flat(2));
+          const L = new T.LineSegments2(g, lmat(o));
+          G.add(L);
+        },
         param(g, a, b, n, o) { const pts = []; for (let i = 0; i <= n; i++) pts.push(g(a + ((b - a) * i) / n)); C.curva(pts, o); },
-        poli(pts, o = {}) { P.push({ t: 'p', pts, o }); },
-        ponto(p, o = {}) { P.push({ t: 'd', pts: [p], o }); if (o.rot) R.push({ p, txt: o.rot, cor: o.cor, dx: 9, dy: -9, tam: o.tam }); },
-        texto(p, txt, o = {}) { R.push(Object.assign({ p, txt }, o)); },
+        poli(pts, o = {}) {
+          if (pts.length < 3) return;
+          const pos = [];
+          for (let i = 1; i < pts.length - 1; i++) pos.push(...pts[0], ...pts[i], ...pts[i + 1]);
+          const g = new T.BufferGeometry();
+          g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+          g.computeVertexNormals();
+          const m = new T.Mesh(g, mat(Object.assign({ alfa: 0.9 }, o), o.plano ? { roughness: 0.8, emissive: col(o.cor || '#888'), emissiveIntensity: 0.25 } : {}));
+          G.add(m);
+          if (o.contorno && o.contorno !== 'mesma') C.curva(pts.concat([pts[0]]), { cor: o.contorno, larg: 1, alfa: 0.7 });
+        },
+        ponto(p, o = {}) {
+          const r = 0.03 * ext * ((o.r || 5) / 5);
+          const m = new T.Mesh(new T.SphereGeometry(r, 20, 14), new T.MeshStandardMaterial({ color: col(o.cor || ink), roughness: 0.35, metalness: 0.1, emissive: col(o.cor || ink), emissiveIntensity: 0.25 }));
+          m.position.set(...p);
+          G.add(m);
+          if (o.arr) {
+            const anel = new T.Mesh(new T.SphereGeometry(r * 2.1, 20, 14), new T.MeshBasicMaterial({ color: col(o.cor || ink), transparent: true, opacity: 0.18, depthWrite: false }));
+            anel.position.set(...p);
+            G.add(anel);
+            V.alcas.push({ mesh: anel, p, arr: o.arr });
+          }
+          if (o.rot) C.texto(p, o.rot, { cor: o.cor, dx: o.dx == null ? 14 : o.dx, dy: o.dy == null ? -14 : o.dy, tam: o.tam });
+        },
+        texto(p, txt, o = {}) {
+          const d = document.createElement('div');
+          d.className = 'rot3';
+          const s = document.createElement('span');
+          s.innerHTML = htmlRotulo(txt);
+          s.style.color = o.cor || ink;
+          if (o.tam) s.style.fontSize = o.tam + 'px';
+          s.style.transform = `translate(${o.dx || 0}px, ${o.dy || 0}px)`;
+          d.appendChild(s);
+          const l = new T.CSS2DObject(d);
+          l.position.set(...p);
+          G.add(l);
+        },
         seta(o0, v, o = {}) {
           const L = len(v);
           if (L < 1e-9) return;
-          const hl = Math.min((o.cab || 0.13) * ext, 0.4 * L);
-          const base = add(o0, mul(v, (L - hl) / L)), tip = add(o0, v);
-          C.linha(o0, base, Object.assign({}, o, { larg: o.larg || 2.6, n: 6 }));
-          P.push({ t: 'h', pts: [base, tip], o });
-          if (o.rot) R.push({ p: add(tip, mul(nrm(v), 0.09 * ext)), txt: o.rot, cor: o.cor, tam: o.tam });
+          const w = (o.larg || 2.6) / 2.6;
+          const hl = Math.min((o.cab || 0.11) * ext, 0.45 * L), rr = 0.011 * ext * w;
+          const d = nrm(v), q = new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), new T.Vector3(...d));
+          const m = new T.MeshStandardMaterial({ color: col(o.cor || ink), roughness: 0.4, emissive: col(o.cor || ink), emissiveIntensity: 0.2 });
+          const haste = new T.Mesh(new T.CylinderGeometry(rr, rr, L - hl, 12), m);
+          haste.quaternion.copy(q);
+          haste.position.set(...add(o0, mul(d, (L - hl) / 2)));
+          const cab = new T.Mesh(new T.ConeGeometry(rr * 3.2, hl, 18), m.clone());
+          cab.quaternion.copy(q);
+          cab.position.set(...add(o0, mul(d, L - hl / 2)));
+          G.add(haste, cab);
+          if (o.rot) C.texto(add(o0, mul(d, L + 0.08 * ext)), o.rot, { cor: o.cor, tam: o.tam });
         },
         eixos(o = {}) {
-          const c = o.cor || cssVar('--eixo', '#8a909a');
+          const c = o.cor || cssVar('--st-eixo', '#6f7c93');
           const X = o.x || [-1.3, 1.3], Y = o.y || [-1.3, 1.3], Z = o.z || [-1.1, 1.4];
-          const r = { larg: 1.2, cor: c, n: 10 };
-          C.linha([X[0], 0, 0], [X[1], 0, 0], r); C.linha([0, Y[0], 0], [0, Y[1], 0], r); C.linha([0, 0, Z[0]], [0, 0, Z[1]], r);
-          const h = 0.08 * ext;
-          P.push({ t: 'h', pts: [[X[1] - h, 0, 0], [X[1], 0, 0]], o: { cor: c, peq: 1 } });
-          P.push({ t: 'h', pts: [[0, Y[1] - h, 0], [0, Y[1], 0]], o: { cor: c, peq: 1 } });
-          P.push({ t: 'h', pts: [[0, 0, Z[1] - h], [0, 0, Z[1]]], o: { cor: c, peq: 1 } });
           const nm = o.nomes || ['x', 'y', 'z'];
-          R.push({ p: [X[1] + 0.07 * ext, 0, 0], txt: nm[0], cor: c, it: 1 }, { p: [0, Y[1] + 0.07 * ext, 0], txt: nm[1], cor: c, it: 1 }, { p: [0, 0, Z[1] + 0.07 * ext], txt: nm[2], cor: c, it: 1 });
-        },
-        /* superfície paramétrica g(u, v) */
-        sup(g, u0, u1, v0, v1, nu, nv, o = {}) {
-          const G = [];
-          for (let i = 0; i <= nu; i++) { G.push([]); for (let j = 0; j <= nv; j++) G[i].push(g(u0 + ((u1 - u0) * i) / nu, v0 + ((v1 - v0) * j) / nv)); }
-          for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
-            const q = [G[i][j], G[i + 1][j], G[i + 1][j + 1], G[i][j + 1]];
-            if (q.some((p) => !p || p.some((x) => !isFinite(x)))) continue;
-            const u = u0 + ((u1 - u0) * (i + 0.5)) / nu, v = v0 + ((v1 - v0) * (j + 0.5)) / nv;
-            P.push({ t: 'p', pts: q, o: Object.assign({}, o, { cor: o.corF ? o.corF(u, v, q) : o.cor }) });
+          [[[X[0], 0, 0], [X[1], 0, 0]], [[0, Y[0], 0], [0, Y[1], 0]], [[0, 0, Z[0]], [0, 0, Z[1]]]].forEach(([a, b], i) => {
+            C.seta(a, sub(b, a), { cor: c, larg: 1.3, cab: 0.07 });
+            C.texto(add(b, mul(nrm(sub(b, a)), 0.08 * ext)), '$' + nm[i] + '$', { cor: c });
+          });
+          if (o.chao !== false) {
+            const lim = Math.max(Math.abs(X[0]), X[1], Math.abs(Y[0]), Y[1]);
+            const n = Math.round(lim / 0.25) * 2;
+            const g = new T.GridHelper(lim * 2, n, col(c), col(c));
+            g.rotation.x = Math.PI / 2;
+            g.material.transparent = true; g.material.opacity = 0.13; g.material.depthWrite = false;
+            G.add(g);
           }
         },
-        /* gráfico z = f(x, y) recortado a [zmin, zmax] e ao domínio dom(x, y) */
+        /* superfície paramétrica g(u, v); o.mapa = 'altura' pinta por z; o.corF(u, v, p) → cor */
+        sup(g, u0, u1, v0, v1, nu, nv, o = {}) {
+          const P = [];
+          for (let i = 0; i <= nu; i++) for (let j = 0; j <= nv; j++) P.push(g(u0 + ((u1 - u0) * i) / nu, v0 + ((v1 - v0) * j) / nv));
+          const id = (i, j) => i * (nv + 1) + j;
+          const ok = (p) => p && p.every((x) => isFinite(x));
+          const pos = new Float32Array(P.length * 3), cores = new Float32Array(P.length * 3);
+          let zmin = Infinity, zmax = -Infinity;
+          P.forEach((p, k) => { if (ok(p)) { pos.set(p, 3 * k); zmin = Math.min(zmin, p[2]); zmax = Math.max(zmax, p[2]); } });
+          const base = hexRgb(o.cor || cssVar('--sup', '#4f8cf0'));
+          P.forEach((p, k) => {
+            let c = base;
+            if (ok(p)) {
+              if (o.corF) { const i = Math.floor(k / (nv + 1)), j = k % (nv + 1); c = hexRgb(o.corF(u0 + ((u1 - u0) * i) / nu, v0 + ((v1 - v0) * j) / nv, p)); }
+              else if (o.mapa === 'altura' || (!o.cor && o.mapa !== false)) c = mapa(zmax > zmin ? (p[2] - zmin) / (zmax - zmin) : 0.5);
+            }
+            const cc = col(c);
+            cores.set([cc.r, cc.g, cc.b], 3 * k);
+          });
+          const idx = [];
+          for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+            const a = id(i, j), b = id(i + 1, j), c = id(i + 1, j + 1), d = id(i, j + 1);
+            if (ok(P[a]) && ok(P[b]) && ok(P[c])) idx.push(a, b, c);
+            if (ok(P[a]) && ok(P[c]) && ok(P[d])) idx.push(a, c, d);
+          }
+          const geo = new T.BufferGeometry();
+          geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+          geo.setAttribute('color', new T.BufferAttribute(cores, 3));
+          geo.setIndex(idx);
+          geo.computeVertexNormals();
+          const m = new T.Mesh(geo, mat(Object.assign({ alfa: 0.92 }, o, { cor: '#ffffff' }), { vertexColors: true, roughness: o.plano ? 0.85 : 0.45 }));
+          G.add(m);
+          // malha: linhas coordenadas finas
+          if (o.malha !== false && !o.plano) {
+            const passo = o.passoMalha || Math.max(1, Math.round(Math.max(nu, nv) / 16));
+            const seg = [];
+            const pushL = (a, b) => { if (ok(P[a]) && ok(P[b])) seg.push(...P[a], ...P[b]); };
+            for (let i = 0; i <= nu; i += passo) for (let j = 0; j < nv; j++) pushL(id(i, j), id(i, j + 1));
+            for (let j = 0; j <= nv; j += passo) for (let i = 0; i < nu; i++) pushL(id(i, j), id(i + 1, j));
+            if (seg.length) {
+              const lg = new T.BufferGeometry();
+              lg.setAttribute('position', new T.Float32BufferAttribute(seg, 3));
+              G.add(new T.LineSegments(lg, new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: (o.alfaMalha || 0.16) * Math.min(1, (o.alfa == null ? 0.92 : o.alfa) + 0.2), depthWrite: false })));
+            }
+          }
+          return m;
+        },
         grafico(f, x0, x1, y0, y1, n, o = {}) {
           const zmin = o.zmin == null ? -Infinity : o.zmin, zmax = o.zmax == null ? Infinity : o.zmax;
-          C.sup((x, y) => {
+          return C.sup((x, y) => {
             if (o.dom && !o.dom(x, y)) return null;
             const z = f(x, y);
             if (!isFinite(z) || z < zmin - 1e-9 || z > zmax + 1e-9) return null;
             return [x, y, z];
-          }, x0, x1, y0, y1, n, n, o);
+          }, x0, x1, y0, y1, n, n, Object.assign({ mapa: o.cor ? null : 'altura' }, o));
         },
         plano(p, N, h, o = {}) {
           const n = nrm(N);
-          let e1 = Math.abs(n[2]) < 0.9 ? nrm(cross(n, [0, 0, 1])) : nrm(cross(n, [1, 0, 0]));
+          const e1 = Math.abs(n[2]) < 0.9 ? nrm(cross(n, [0, 0, 1])) : nrm(cross(n, [1, 0, 0]));
           const e2 = cross(n, e1);
-          const m = o.m || 6;
-          for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) {
-            const a0 = -h + (2 * h * i) / m, a1 = -h + (2 * h * (i + 1)) / m, b0 = -h + (2 * h * j) / m, b1 = -h + (2 * h * (j + 1)) / m;
-            const pt = (a, b) => add(p, add(mul(e1, a), mul(e2, b)));
-            P.push({ t: 'p', pts: [pt(a0, b0), pt(a1, b0), pt(a1, b1), pt(a0, b1)], o: Object.assign({ alfa: 0.28, plano: 1 }, o) });
+          const pt = (a, b) => add(p, add(mul(e1, a), mul(e2, b)));
+          const cs = [pt(-h, -h), pt(h, -h), pt(h, h), pt(-h, h)];
+          C.poli(cs, Object.assign({ alfa: 0.3, plano: 1 }, o));
+          C.curva(cs.concat([cs[0]]), { cor: o.cor, larg: 1.2, alfa: 0.7 });
+        },
+        caixa(a, b, o = {}) {
+          const s = sub(b, a), c = mul(add(a, b), 0.5);
+          const m = new T.Mesh(new T.BoxGeometry(...s), mat(Object.assign({ alfa: 0.3 }, o)));
+          m.position.set(...c);
+          G.add(m);
+          const e = new T.LineSegments(new T.EdgesGeometry(m.geometry), new T.LineBasicMaterial({ color: col(o.cor || ink), transparent: true, opacity: 0.6 }));
+          e.position.copy(m.position);
+          G.add(e);
+        },
+        /* prismas da soma de Riemann: lista de [x0, x1, y0, y1, z0, z1] */
+        prismas(lista, o = {}) {
+          if (!lista.length) return;
+          const im = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), mat(Object.assign({ alfa: 0.85 }, o)), lista.length);
+          const M4 = new T.Matrix4(), q = new T.Quaternion();
+          lista.forEach((b, i) => { M4.compose(new T.Vector3((b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2), q, new T.Vector3(Math.max(1e-4, b[1] - b[0]), Math.max(1e-4, b[3] - b[2]), Math.max(1e-4, Math.abs(b[5] - b[4])))); im.setMatrixAt(i, M4); });
+          G.add(im);
+          if (o.arestas !== false && lista.length <= 900) {
+            const seg = [];
+            lista.forEach(([x0, x1, y0, y1, z0, z1]) => {
+              const v = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+              for (let k = 0; k < 4; k++) { const [a, b] = [v[k], v[(k + 1) % 4]]; seg.push(a[0], a[1], z1, b[0], b[1], z1, a[0], a[1], z0, a[0], a[1], z1); }
+            });
+            const lg = new T.BufferGeometry();
+            lg.setAttribute('position', new T.Float32BufferAttribute(seg, 3));
+            G.add(new T.LineSegments(lg, new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false })));
           }
         },
-        caixa(a, b, o = {}) { // paralelepípedo [a, b] alinhado com os eixos
-          const [x0, y0, z0] = a, [x1, y1, z1] = b;
-          const f = [
-            [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
-            [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]],
-            [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
-          ];
-          f.forEach((q) => P.push({ t: 'p', pts: q, o }));
+        /* rodinha (para o rotacional): roda no plano z = c com ângulo a */
+        rodinha(p, r, ang, o = {}) {
+          const pts = [];
+          for (let i = 0; i <= 32; i++) { const t = (2 * Math.PI * i) / 32; pts.push([p[0] + r * Math.cos(t), p[1] + r * Math.sin(t), p[2]]); }
+          C.curva(pts, { cor: o.cor, larg: o.larg || 1.6 });
+          for (let k = 0; k < 4; k++) { const t = ang + (k * Math.PI) / 2; C.linha(p, [p[0] + r * Math.cos(t), p[1] + r * Math.sin(t), p[2]], { cor: o.cor, larg: o.larg || 1.6 }); }
         },
       };
       return C;
     }
 
     desenhar() {
-      if (!this.W) return;
-      const ctx = this.ctx;
-      ctx.clearRect(0, 0, this.W, this.H);
-      this.prims = [];
-      this.rot = [];
       if (!this.cena) return;
+      this._limpar();
       try { this.cena(this._c()); } catch (e) { console.error(e); }
-      const L = nrm([-0.35, 0.55, 0.75]);
-      const fundo = cssVar('--surface', '#fff'), tinta = cssVar('--ink', '#1b2420');
-      const D = [];
-      for (const p of this.prims) {
-        const q = p.pts.map((x) => this.proj(x));
-        if (q.some((r) => !isFinite(r[0]) || !isFinite(r[1]))) continue;
-        let z = 0;
-        q.forEach((r) => (z += r[2]));
-        z /= q.length;
-        D.push({ p, q, z: z + (p.o.vies || 0) * this.opts.ext + (p.t === 's' ? 0.004 : p.t === 'p' ? 0 : 0.01) * this.opts.ext });
-      }
-      D.sort((a, b) => a.z - b.z);
-      for (const d of D) {
-        const { p, q } = d, o = p.o;
-        if (p.t === 'p') {
-          let c = hexRgb(o.cor || [120, 150, 220]);
-          let a = o.alfa == null ? 0.9 : o.alfa;
-          if (!o.plano && o.sombra !== false && p.pts.length >= 3) {
-            const N = nrm(cross(sub(p.pts[1], p.pts[0]), sub(p.pts[2], p.pts[0])));
-            const nv = this._vec(N);
-            const k = 0.55 + 0.45 * Math.abs(dot(nv, L));
-            const tras = nv[2] < 0;
-            if (tras && o.corTras) c = hexRgb(o.corTras);
-            c = c.map((x) => Math.round(clamp(x * k + (tras && !o.corTras ? 18 : 0), 0, 255)));
-          }
-          ctx.beginPath();
-          q.forEach((r, i) => (i ? ctx.lineTo(r[0], r[1]) : ctx.moveTo(r[0], r[1])));
-          ctx.closePath();
-          ctx.fillStyle = rgb(c, a);
-          ctx.fill();
-          if (o.malha !== false) {
-            ctx.strokeStyle = o.contorno || (o.plano ? rgb(c, Math.min(1, a + 0.25)) : 'rgba(0,0,0,0.13)');
-            if (o.contorno === 'mesma') ctx.strokeStyle = rgb(c, a);
-            ctx.lineWidth = o.plano ? 0.6 : 0.5;
-            ctx.stroke();
-          }
-        } else if (p.t === 's') {
-          ctx.save();
-          ctx.strokeStyle = o.cor || tinta;
-          ctx.globalAlpha = o.alfa == null ? 1 : o.alfa;
-          ctx.lineWidth = o.larg || 1.6;
-          ctx.lineCap = 'round';
-          if (o.trac) ctx.setLineDash(o.trac);
-          ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); ctx.lineTo(q[1][0], q[1][1]); ctx.stroke();
-          ctx.restore();
-        } else if (p.t === 'h') {
-          const [b, t] = q;
-          const ang = Math.atan2(t[1] - b[1], t[0] - b[0]);
-          const L2 = Math.max(o.peq ? 8 : 10, Math.min(16, Math.hypot(t[0] - b[0], t[1] - b[1]) * 1.25));
-          const w = L2 * 0.45;
-          ctx.save();
-          ctx.globalAlpha = o.alfa == null ? 1 : o.alfa;
-          ctx.fillStyle = o.cor || tinta;
-          ctx.beginPath();
-          ctx.moveTo(t[0], t[1]);
-          ctx.lineTo(t[0] - L2 * Math.cos(ang) + w * Math.sin(ang), t[1] - L2 * Math.sin(ang) - w * Math.cos(ang));
-          ctx.lineTo(t[0] - L2 * Math.cos(ang) - w * Math.sin(ang), t[1] - L2 * Math.sin(ang) + w * Math.cos(ang));
-          ctx.closePath(); ctx.fill();
-          ctx.restore();
-        } else if (p.t === 'd') {
-          ctx.beginPath();
-          ctx.arc(q[0][0], q[0][1], o.r || 5, 0, 7);
-          ctx.fillStyle = o.cor || tinta;
-          ctx.fill();
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = fundo;
-          ctx.stroke();
-        }
-      }
-      // rótulos por cima de tudo
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      for (const r of this.rot) {
-        const q = this.proj(r.p);
-        if (!isFinite(q[0])) continue;
-        ctx.font = (r.it ? 'italic ' : '') + (r.peso || 600) + ' ' + (r.tam || 14) + 'px ' + (r.it ? 'Georgia, serif' : 'IBM Plex Sans, system-ui, sans-serif');
-        const x = q[0] + (r.dx || 0), y = q[1] + (r.dy || 0);
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = fundo;
-        ctx.lineJoin = 'round';
-        ctx.strokeText(r.txt, x, y);
-        ctx.fillStyle = r.cor || tinta;
-        ctx.fillText(r.txt, x, y);
-      }
+      this.sujo = true;
     }
   }
   window.Vista3D = Vista3D;
+  window.htmlRotulo = htmlRotulo;
 })();

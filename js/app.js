@@ -30,7 +30,7 @@
     };
     M.definir = (o) => { Object.assign(M.S, o); M.atualizar(); };
 
-    M.grupo = (titulo) => { const g = el('div', 'grp'); if (titulo) g.appendChild(el('h3', null, esc(titulo))); ctl.appendChild(g); return g; };
+    M.grupo = (titulo) => { const g = el('div', 'grp'); if (titulo) g.appendChild(el('h3', null, tex(titulo))); ctl.appendChild(g); return g; };
     const alvo = (o) => (o && o.em) || ctl;
 
     M.barra = (id, o) => {
@@ -38,9 +38,9 @@
       M.S[id] = o.valor;
       const r = el('div', 'barra');
       r.innerHTML = `<label class="var" style="color:${o.cor || 'var(--ink)'}"></label><input type="range" min="${o.min}" max="${o.max}" step="${o.passo || 0.01}"><output class="mono"></output>`;
-      r.querySelector('label').textContent = o.rot;
+      r.querySelector('label').innerHTML = autoTex(o.rot);
       const inp = r.querySelector('input'), sai = r.querySelector('output');
-      inp.style.accentColor = o.cor || 'var(--accent)';
+      inp.style.setProperty('--c', o.cor || 'var(--accent)');
       inp.setAttribute('aria-label', o.nome || o.rot);
       let anim = null;
       if (o.animar !== false) {
@@ -81,12 +81,12 @@
     M.escolha = (id, o) => {
       M.S[id] = o.valor;
       const w = el('div', 'escolha' + (o.mono ? ' emono' : ''));
-      if (o.rot) w.appendChild(el('span', 'rot', esc(o.rot)));
+      if (o.rot) w.appendChild(el('span', 'rot', tex(o.rot)));
       const bs = el('div', 'chips');
       o.opcoes.forEach(([v, t]) => {
         const b = el('button', 'chip');
         b.type = 'button';
-        b.innerHTML = t;
+        b.innerHTML = o.mono ? autoTex(t) : tex(t);
         b.addEventListener('click', () => { M.S[id] = v; if (o.aoMudar) o.aoMudar(v); M.atualizar(); });
         b._v = v;
         bs.appendChild(b);
@@ -101,7 +101,7 @@
       M.S[id] = !!o.valor;
       const l = el('label', 'tog');
       l.innerHTML = '<input type="checkbox"><span></span>';
-      l.querySelector('span').innerHTML = o.rot;
+      l.querySelector('span').innerHTML = tex(o.rot);
       const c = l.querySelector('input');
       c.addEventListener('change', () => { M.S[id] = c.checked; M.atualizar(); });
       M.sync.push(() => { c.checked = !!M.S[id]; });
@@ -113,7 +113,7 @@
 
     M.botoes = (lista, o) => {
       const w = el('div', 'btns');
-      lista.forEach(([t, f, cls]) => { const b = el('button', 'btn' + (cls ? ' ' + cls : ''), t); b.type = 'button'; b.addEventListener('click', () => { M.parar(); f(); }); w.appendChild(b); });
+      lista.forEach(([t, f, cls]) => { const b = el('button', 'btn' + (cls ? ' ' + cls : ''), tex(t)); b.type = 'button'; b.addEventListener('click', () => { M.parar(); f(); }); w.appendChild(b); });
       alvo(o).appendChild(w);
       return w;
     };
@@ -121,14 +121,14 @@
     /* leituras: fn(S) → [[rótulo, valor, classe?], …]; '—' como separador */
     M.leituras = (titulo, fn, o = {}) => {
       const c = el('div', 'card leit');
-      if (titulo) c.appendChild(el('h3', null, titulo));
+      if (titulo) c.appendChild(el('h3', null, tex(titulo)));
       const corpo = el('div', 'rows');
       c.appendChild(corpo);
       (o.em || out).appendChild(c);
       M.leit.push(() => {
         let rows;
         try { rows = fn(M.S); } catch (e) { console.error(e); rows = []; }
-        corpo.innerHTML = rows.map((r) => (r === '—' ? '<hr>' : typeof r === 'string' ? `<p class="veredito">${r}</p>` : `<div class="row ${r[2] || ''}"><span>${r[0]}</span><b class="mono">${r[1]}</b></div>`)).join('');
+        corpo.innerHTML = rows.map((r) => (r === '—' ? '<hr>' : typeof r === 'string' ? `<p class="veredito">${tex(r)}</p>` : `<div class="row ${r[2] || ''}"><span>${tex(r[0])}</span><b>${tex(r[1])}</b></div>`)).join('');
       });
       return c;
     };
@@ -137,13 +137,13 @@
     M.texto = (conteudo, tipo = 'nota', o = {}) => {
       const c = el('div', 'box ' + tipo);
       (o.em || info).appendChild(c);
-      if (typeof conteudo === 'function') M.infos.push(() => { const h = conteudo(M.S); c.innerHTML = h || ''; c.hidden = !h; });
-      else c.innerHTML = conteudo;
+      if (typeof conteudo === 'function') M.infos.push(() => { const h = conteudo(M.S); c.innerHTML = tex(h || ''); c.hidden = !h; });
+      else c.innerHTML = tex(conteudo);
       return c;
     };
 
     M.legenda = (itens) => {
-      legenda.innerHTML = itens.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join('');
+      legenda.innerHTML = itens.map(([c, t]) => `<span><i style="background:${c}"></i>${tex(t)}</span>`).join('');
     };
 
     M.loop = (fn) => {
@@ -158,7 +158,7 @@
     M.destruir = () => { M.parar(); M.vistas.forEach((v) => v.destruir()); };
     M.cores = () => {
       const g = (n, f) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f;
-      return { u: g('--c1', '#C25A16'), v: g('--c2', '#1F7A4D'), n: g('--c3', '#6A4BC4'), b: g('--c4', '#2F6FB5'), r: g('--bad', '#C2413A'), a: g('--accent', '#2E6B4F'), m: g('--muted', '#5c6661'), i: g('--ink', '#1b2420'), sup: g('--sup', '#5b8fd6'), sup2: g('--sup2', '#b39ddb') };
+      return { u: g('--c1', '#FF9548'), v: g('--c2', '#34D399'), n: g('--c3', '#A78BFA'), b: g('--c4', '#60A5FA'), r: g('--st-bad', '#F87171'), a: g('--st-acc', '#F472B6'), m: g('--st-muted', '#8A97AD'), i: g('--st-ink', '#E8EDF5'), sup: g('--sup', '#4F8CF0'), sup2: g('--sup2', '#8B7CF6'), ouro: g('--ouro', '#F5C542') };
     };
     return M;
   }
@@ -217,7 +217,7 @@
       ms.forEach((m) => {
         const a = el('a', 'mcard');
         a.href = '#/' + m.id;
-        a.innerHTML = `<span class="num">${CDI.materias.indexOf(m) + 1}</span><b>${esc(m.titulo)}</b><span>${m.resumo}</span>`;
+        a.innerHTML = `<span class="num">${CDI.materias.indexOf(m) + 1}</span><b>${esc(m.titulo)}</b><span>${tex(m.resumo)}</span>`;
         grid.appendChild(a);
       });
       w.appendChild(grid);
@@ -271,7 +271,7 @@
     ch.innerHTML = '';
     if (modo === 'explorar' && m.modelos.length > 1) {
       m.modelos.forEach((md) => {
-        const b = el('button', 'chip', esc(md.nome));
+        const b = el('button', 'chip', tex(md.nome));
         b.type = 'button';
         b.setAttribute('aria-pressed', md.id === modeloId);
         b.addEventListener('click', () => abrir({ id: m.id, modelo: md.id, modo: 'explorar' }));
@@ -329,7 +329,7 @@
     if (p.vista && M.vistas[0] && M.vistas[0].vistaDe) M.vistas[0].vistaDe(p.vista[0], p.vista[1]);
     M.definir(Object.assign({ destaque: null }, p.estado || {}));
     topo.innerHTML = `<div class="ptopo"><span>Passo ${k + 1} de ${ps.length}</span></div>
-      <ol class="plista">${ps.map((q, i) => `<li class="${i === k ? 'on' : i < k ? 'feito' : ''}"><button type="button" data-i="${i}"><span class="pn">${i + 1}</span><span>${esc(q.titulo)}</span></button>${i === k ? `<div class="ptexto">${q.texto}</div>` : ''}</li>`).join('')}</ol>
+      <ol class="plista">${ps.map((q, i) => `<li class="${i === k ? 'on' : i < k ? 'feito' : ''}"><button type="button" data-i="${i}"><span class="pn">${i + 1}</span><span>${tex(q.titulo)}</span></button>${i === k ? `<div class="ptexto">${tex(q.texto)}</div>` : ''}</li>`).join('')}</ol>
       <div class="pnav"><button type="button" class="btn" data-d="-1" ${k === 0 ? 'disabled' : ''}>← Anterior</button><button type="button" class="btn pri" data-d="1" ${k === ps.length - 1 ? 'disabled' : ''}>Seguinte →</button></div>`;
     topo.onclick = (e) => {
       const b = e.target.closest('button');
@@ -350,9 +350,9 @@
     const certas = Object.keys(P.r).filter((i) => P.r[i] === qs[i].certa).length;
     const feitas = Object.keys(P.r).length;
     topo.innerHTML = `<div class="ptopo"><span>Pergunta ${k + 1} de ${qs.length}</span><span class="mono">${certas}/${feitas} certas</span></div>
-      <p class="perg">${q.p}</p>
-      <div class="ops">${q.op.map((o, i) => `<button type="button" class="op ${resp == null ? '' : i === q.certa ? 'certa' : i === resp ? 'errada' : 'apagada'}" data-o="${i}" ${resp != null ? 'disabled' : ''}><span class="ol">${'ABCDE'[i]}</span><span>${o}</span></button>`).join('')}</div>
-      ${resp != null ? `<div class="box ${resp === q.certa ? 'ok' : 'aviso'}"><b>${resp === q.certa ? 'Certo.' : 'Não é essa.'}</b> ${q.porque}</div>` : q.dica ? `<details class="dicaq"><summary>Dica</summary><p>${q.dica}</p></details>` : ''}
+      <p class="perg">${tex(q.p)}</p>
+      <div class="ops">${q.op.map((o, i) => `<button type="button" class="op ${resp == null ? '' : i === q.certa ? 'certa' : i === resp ? 'errada' : 'apagada'}" data-o="${i}" ${resp != null ? 'disabled' : ''}><span class="ol">${'ABCDE'[i]}</span><span>${tex(o)}</span></button>`).join('')}</div>
+      ${resp != null ? `<div class="box ${resp === q.certa ? 'ok' : 'aviso'}"><b>${resp === q.certa ? 'Certo.' : 'Não é essa.'}</b> ${tex(q.porque)}</div>` : q.dica ? `<details class="dicaq"><summary>Dica</summary><p>${tex(q.dica)}</p></details>` : ''}
       <div class="pnav"><button type="button" class="btn" data-d="-1" ${k === 0 ? 'disabled' : ''}>← Anterior</button>${k === qs.length - 1 ? `<button type="button" class="btn" data-rec>Recomeçar</button>` : `<button type="button" class="btn pri" data-d="1">Seguinte →</button>`}</div>`;
     topo.onclick = (e) => {
       const b = e.target.closest('button');

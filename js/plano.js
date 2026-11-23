@@ -49,7 +49,7 @@
       const pts = new Map();
       let alca = null, pan = null, pinch = null, mov = 0;
       const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-      cv.addEventListener('pointerdown', (e) => {
+      cv.addEventListener('pointerdown', (e) => { this.el.querySelector('.vdica').classList.add('fora');
         cv.setPointerCapture(e.pointerId);
         pts.set(e.pointerId, [e.clientX, e.clientY]);
         mov = 0;
@@ -108,7 +108,7 @@
 
     _api() {
       const P = this, ctx = this.ctx;
-      const tinta = cssVar('--ink', '#1b2420'), fundo = cssVar('--surface', '#fff'), mut = cssVar('--muted', '#5c6661'), linha = cssVar('--line', '#dce1da');
+      const tinta = cssVar('--st-ink', '#e8edf5'), fundo = cssVar('--st-bg', '#0e1420'), mut = cssVar('--st-muted', '#8a97ad'), linha = cssVar('--st-line', 'rgba(255,255,255,.07)');
       const A = {
         cor: (n, f) => cssVar(n, f),
         limites: () => P.limites(),
@@ -126,17 +126,17 @@
         eixos(nomes = ['x', 'y']) {
           const [passo, passoY] = A.grelha();
           const o = P.px(0, 0);
-          const eixo = cssVar('--eixo', '#8a909a');
+          const eixo = cssVar('--st-eixo', '#6f7c93');
           ctx.save(); ctx.strokeStyle = eixo; ctx.fillStyle = eixo; ctx.lineWidth = 1.3;
           ctx.beginPath(); ctx.moveTo(0, o[1]); ctx.lineTo(P.W, o[1]); ctx.moveTo(o[0], 0); ctx.lineTo(o[0], P.H); ctx.stroke();
-          ctx.font = '11px IBM Plex Mono, ui-monospace, monospace';
+          ctx.font = '10.5px IBM Plex Mono, ui-monospace, monospace';
           ctx.textAlign = 'center'; ctx.textBaseline = 'top';
           const [x0, x1, y0, y1] = P.limites();
           const lx = Math.min(Math.max(o[1] + 4, 4), P.H - 16), ly = Math.min(Math.max(o[0] - 6, 22), P.W - 4);
           for (let x = Math.ceil(x0 / passo) * passo; x <= x1; x += passo) { if (Math.abs(x) < 1e-9) continue; const a = P.px(x, 0)[0]; ctx.fillText(CM.fmtC(x, 2), a, lx); }
           ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
           for (let y = Math.ceil(y0 / passoY) * passoY; y <= y1; y += passoY) { if (Math.abs(y) < 1e-9) continue; const b = P.px(0, y)[1]; ctx.fillText(CM.fmtC(y, 2), ly, b); }
-          ctx.font = 'italic 600 15px Georgia, serif';
+          ctx.font = 'italic 500 16px "Latin Modern Math", "Cambria Math", Georgia, serif';
           ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
           ctx.fillText(nomes[0], P.W - 8, Math.min(Math.max(o[1] - 4, 18), P.H - 4));
           ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -259,9 +259,10 @@
         },
         poli(pts, o = {}) { A.curva(pts, Object.assign({ fechar: true }, o)); },
         texto(p, txt, o = {}) {
+          if (typeof txt === 'string' && txt.length > 2 && txt[0] === '$' && txt.endsWith('$')) { txt = txt.slice(1, -1); o = Object.assign({ it: 1 }, o); }
           const q = P.px(p[0], p[1]);
           ctx.save();
-          ctx.font = (o.it ? 'italic ' : '') + (o.peso || 600) + ' ' + (o.tam || 14) + 'px ' + (o.it ? 'Georgia, serif' : 'IBM Plex Sans, system-ui, sans-serif');
+          ctx.font = (o.it ? 'italic ' : '') + (o.it ? 500 : o.peso || 600) + ' ' + (o.tam || (o.it ? 16 : 14)) + 'px ' + (o.it ? 'Georgia, serif' : 'IBM Plex Sans, system-ui, sans-serif');
           ctx.textAlign = o.al || 'center'; ctx.textBaseline = 'middle';
           ctx.lineWidth = 4; ctx.strokeStyle = fundo; ctx.lineJoin = 'round';
           const x = q[0] + (o.dx || 0), y = q[1] + (o.dy || 0);
