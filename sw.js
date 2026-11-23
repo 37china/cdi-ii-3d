@@ -1,5 +1,5 @@
 /* Funciona sem internet depois da primeira visita. A página vem da rede primeiro, para as atualizações chegarem. */
-const C = "cdi-ii-3d-v2";
+const C = "cdi-ii-3d-v3";
 const A = ["./", "./index.html", "./css/app.css", "./js/math.js", "./js/tex.js", "./js/vista3d.js", "./js/plano.js", "./js/app.js", "./manifest.webmanifest", "./icons/icon-180.png", "./icons/icon-192.png", "./vendor/t3.min.js", "./vendor/katex/katex.min.js", "./vendor/katex/katex.min.css", "./js/materias/01-topologia.js", "./js/materias/02-diferenciabilidade.js", "./js/materias/03-cadeia.js", "./js/materias/04-gradiente.js", "./js/materias/05-hessiana.js", "./js/materias/06-inversa.js", "./js/materias/07-lagrange.js", "./js/materias/08-integrais.js", "./js/materias/09-mudanca.js", "./js/materias/10-coordenadas.js", "./js/materias/11-green.js", "./js/materias/12-superficies.js", "./vendor/katex/fonts/KaTeX_AMS-Regular.woff2", "./vendor/katex/fonts/KaTeX_Caligraphic-Bold.woff2", "./vendor/katex/fonts/KaTeX_Caligraphic-Regular.woff2", "./vendor/katex/fonts/KaTeX_Fraktur-Bold.woff2", "./vendor/katex/fonts/KaTeX_Fraktur-Regular.woff2", "./vendor/katex/fonts/KaTeX_Main-Bold.woff2", "./vendor/katex/fonts/KaTeX_Main-BoldItalic.woff2", "./vendor/katex/fonts/KaTeX_Main-Italic.woff2", "./vendor/katex/fonts/KaTeX_Main-Regular.woff2", "./vendor/katex/fonts/KaTeX_Math-BoldItalic.woff2", "./vendor/katex/fonts/KaTeX_Math-Italic.woff2", "./vendor/katex/fonts/KaTeX_SansSerif-Bold.woff2", "./vendor/katex/fonts/KaTeX_SansSerif-Italic.woff2", "./vendor/katex/fonts/KaTeX_SansSerif-Regular.woff2", "./vendor/katex/fonts/KaTeX_Script-Regular.woff2", "./vendor/katex/fonts/KaTeX_Size1-Regular.woff2", "./vendor/katex/fonts/KaTeX_Size2-Regular.woff2", "./vendor/katex/fonts/KaTeX_Size3-Regular.woff2", "./vendor/katex/fonts/KaTeX_Size4-Regular.woff2", "./vendor/katex/fonts/KaTeX_Typewriter-Regular.woff2"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(C).then((c) => c.addAll(A)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== C).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
@@ -8,7 +8,7 @@ self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (u.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fetch(e.request, { cache: "no-cache" }).then((res) => {
       if (res && res.status === 200 && res.type === "basic") { const cl = res.clone(); caches.open(C).then((c) => c.put(e.request, cl)); }
       return res;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("./index.html")))
