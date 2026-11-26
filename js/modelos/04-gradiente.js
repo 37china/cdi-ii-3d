@@ -1,7 +1,7 @@
 /* 4. Linhas, vetor tangente, gradiente, linhas e superfícies de nível, plano tangente. */
 (function () {
   const PI = Math.PI;
-  CDI.materia({
+  CDI.modelosDe('gradiente', {
     id: 'gradiente', ordem: 4, grupo: 'Cálculo diferencial', curto: 'Linhas e gradiente', titulo: 'Linhas, gradiente e plano tangente', paginas: 'pp. 18–24',
     resumo: 'Caminhos e vetor tangente; o gradiente é perpendicular às linhas e superfícies de nível.',
     modelos: [
@@ -16,14 +16,14 @@
             parab: { tex: '(t;\\,t^2)', g: (t) => [t, t * t], d: (t) => [1, 2 * t], t: [-1.4, 1.4], dg: "g'(t)=(1;\\,2t)" },
             seg: { tex: 'A+t(B-A)', g: (t, S) => CM.add(S.A, CM.mul(CM.sub(S.B, S.A), t)), d: (t, S) => CM.sub(S.B, S.A), t: [0, 1], dg: "g'(t)=B-A" },
           };
-          M.escolha('c', { rot: '$g(t)$', opcoes: Object.keys(CU).map((k) => [k, '$' + CU[k].tex + '$']), valor: 'circ', aoMudar: (k) => { M.S.t = k === 'circ' ? PI / 2 : k === 'parab' ? 0.6 : 0.3; } });
+          const cam = CDI.caminho(M, 'g', { valor: '(cos t; sen t)', a: '0', b: '2pi', exemplos: [['$(\\cos t;\\operatorname{sen}t)$', '(cos t; sen t)', '0', '2pi', { t: PI / 2 }], ['$(t;t^2)$', '(t; t^2)', '-1,4', '1,4', { t: 0.6 }], ['$(2\\cos t;\\operatorname{sen}t)$', '(2cos t; sen t)', '0', '2pi', { t: 1 }], ['$(t\\cos t;\\,t\\operatorname{sen}t)$', '(t cos t; t sen t)', '0', '4pi', { t: 3 }]] });
+          const CUc = () => { const k = cam(); return { g: (t) => k.g(t), d: (t) => k.d(t), t: [k.a, k.b] }; };
           M.barra('t', { rot: '$t$', cor: cor.n, min: 0, max: 2 * PI, valor: PI / 2, nome: 'parâmetro t', dur: 6000 });
-          M.barra('r', { rot: '$r$', cor: cor.u, min: 0.3, max: 1.8, valor: 1, nome: 'raio' });
           M.caixa('reta', { rot: 'Reta tangente', valor: true });
           M.botoes([['Exemplo da aula: $(0;1)$ na circunferência', () => M.definir({ c: 'circ', r: 1, t: PI / 2, reta: true })]]);
-          M.sync.unshift(() => { const c = CU[M.S.c], b = M.ctl.querySelector('input[aria-label="parâmetro t"]'); if (b) { b.min = c.t[0]; b.max = c.t[1]; } M.S.t = CM.clamp(M.S.t, c.t[0], c.t[1]); });
+          M.sync.unshift(() => { const c = CUc(), b = M.ctl.querySelector('input[aria-label="parâmetro t"]'); if (b) { b.min = c.t[0]; b.max = c.t[1]; } M.S.t = CM.clamp(M.S.t, c.t[0], c.t[1]); });
           M.cena(P, (G, S) => {
-            const c = CU[S.c];
+            const c = CUc();
             G.eixos();
             G.param((t) => c.g(t, S), c.t[0], c.t[1], 240, { cor: cor.n, larg: 2.6 });
             const p = c.g(S.t, S), v = c.d(S.t, S);
@@ -33,8 +33,8 @@
             G.ponto(p, { cor: cor.n, rot: 'g(t)' });
           });
           M.leituras('No instante $t$', (S) => {
-            const c = CU[S.c], p = c.g(S.t, S), v = c.d(S.t, S);
-            return [['$g(t)$', '$' + TX.v(p, 3) + '$'], ['$' + c.dg + '$', '$' + TX.v(v, 3) + '$'], ["$\\|g'(t)\\|$ (rapidez)", '$' + TX.n(Math.hypot(...v), 3) + '$'], ['reta tangente', '$x=' + TX.v(p, 2) + '+\\lambda' + TX.v(v, 2) + '$']];
+            const c = CUc(), p = c.g(S.t, S), v = c.d(S.t, S);
+            return [['$g(t)$', '$' + TX.v(p, 3) + '$'], ["$g'(t)$", '$' + TX.v(v, 3) + '$'], ["$\\|g'(t)\\|$ (rapidez)", '$' + TX.n(Math.hypot(...v), 3) + '$'], ['reta tangente', '$x=' + TX.v(p, 2) + '+\\lambda' + TX.v(v, 2) + '$']];
           });
           M.texto("<b class=\"t\">Linhas</b><p>Uma linha é a imagem de uma função contínua de uma variável, $g:\\mathbb R\\to\\mathbb R^n$ (um caminho). Se $g$ é diferenciável,</p>$$g'(t)=\\lim_{h\\to0}\\frac{g(t+h)-g(t)}{h}$$<p>é um vetor tangente à linha no ponto $g(t)$. A reta tangente é $x=g(t_0)+\\lambda g'(t_0)$.</p><p>Exemplo das teóricas: circunferência unitária no ponto $(0;1)=g(\\pi/2)$. $g'(\\pi/2)=(-1;0)$, e a reta tangente é $(x;y-1)=\\lambda(-1;0)$, ou seja, $y=1$.</p>", 'nota');
           M.legenda([[cor.n, 'linha descrita por $g$'], [cor.u, "vetor tangente $g'(t)$"], [cor.ouro, 'reta tangente']]);
@@ -48,20 +48,20 @@
           const P = M.plano({ janela: [-2, 2, -2, 2] });
           M.S.p = [0.8, 0.6];
           const FN = {
-            circ: { tex: 'x^2+y^2', f: (x, y) => x * x + y * y },
-            elip: { tex: 'x^2+4y^2', f: (x, y) => x * x + 4 * y * y },
-            sela: { tex: 'x^2-y^2', f: (x, y) => x * x - y * y },
-            xy: { tex: 'xy', f: (x, y) => x * y },
-            ondas: { tex: '\\sin x+\\cos y', f: (x, y) => Math.sin(x) + Math.cos(y) },
+            circ: { src: 'x^2+y^2', tex: 'x^2+y^2', f: (x, y) => x * x + y * y },
+            elip: { src: 'x^2+4y^2', tex: 'x^2+4y^2', f: (x, y) => x * x + 4 * y * y },
+            sela: { src: 'x^2-y^2', tex: 'x^2-y^2', f: (x, y) => x * x - y * y },
+            xy: { src: 'xy', tex: 'xy', f: (x, y) => x * y },
+            ondas: { src: 'sen x+cos y', tex: '\\sin x+\\cos y', f: (x, y) => Math.sin(x) + Math.cos(y) },
           };
-          M.escolha('f', { rot: '$f(x;y)$', opcoes: Object.keys(FN).map((k) => [k, '$' + FN[k].tex + '$']), valor: 'elip' });
+          M.funcao('f', { vars: ['x', 'y'], valor: 'x^2+4y^2', exemplos: Object.keys(FN).map((k) => ['$' + FN[k].tex + '$', FN[k].src]) });
           M.barra('th', { rot: '$\\theta$', cor: cor.b, min: 0, max: 2 * PI, valor: 0.3, fmt: CM.graus, circular: true, nome: 'direção v', dur: 7000 });
           M.caixa('mapa', { rot: 'Cores por valor de $f$', valor: true });
           M.caixa('np', { rot: 'Plano $z=f(P)$ na vista 3D', valor: true });
           let esc = null;
-          const k = (S) => { if (!esc || esc.f !== S.f) { const f = FN[S.f].f; let m = 0; for (let i = 0; i <= 16; i++) for (let j = 0; j <= 16; j++) m = Math.max(m, Math.abs(f(-1.8 + (3.6 * i) / 16, -1.8 + (3.6 * j) / 16))); esc = { f: S.f, k: 1.5 / m }; } return esc.k; };
+          const k = (S) => { const ch = JSON.stringify(S.f); if (!esc || esc.f !== ch) { const fx = CDI.faixaZ(M.F.f.f, -1.8, 1.8, -1.8, 1.8); esc = { f: ch, k: 1.5 / Math.max(Math.abs(fx[0]), Math.abs(fx[1]), 1e-9) }; } return esc.k; };
           M.cena(V, (C, S) => {
-            const f = FN[S.f].f, kk = k(S), c = f(...S.p), z = kk * c;
+            const f = M.F.f.f, kk = k(S), c = f(...S.p), z = kk * c;
             C.eixos({ x: [-1.9, 2], y: [-1.9, 2], z: [-1.6, 1.8], nomes: ['x', 'y', 'f'] });
             C.grafico((x, y) => kk * f(x, y), -1.8, 1.8, -1.8, 1.8, 44, { alfa: 0.6 });
             const lv = CM.contorno(f, -1.8, 1.8, -1.8, 1.8, 90, 90, c);
@@ -79,7 +79,7 @@
             C.ponto([...S.p, 0], { cor: cor.i, r: 4, rot: '$P$', arr: (x, y) => M.definir({ p: [CM.clamp(x, -1.8, 1.8), CM.clamp(y, -1.8, 1.8)] }) });
           });
           M.cena(P, (G, S) => {
-            const f = FN[S.f].f;
+            const f = M.F.f.f;
             const [x0, x1, y0, y1] = G.limites();
             const vs = []; for (let i = 0; i < 25; i++) vs.push(f(x0 + ((x1 - x0) * (i % 5)) / 4, y0 + ((y1 - y0) * Math.floor(i / 5)) / 4));
             const lo = Math.min(...vs), hi = Math.max(...vs);
@@ -102,7 +102,7 @@
             G.ponto(S.p, { cor: cor.i, rot: 'P', arr: (x, y) => M.definir({ p: [x, y] }) });
           });
           M.leituras('Em $P$', (S) => {
-            const f = FN[S.f].f, gr = CM.grad(f, ...S.p), gn = Math.hypot(...gr), v = [Math.cos(S.th), Math.sin(S.th)];
+            const f = M.F.f.f, gr = CM.grad(f, ...S.p), gn = Math.hypot(...gr), v = [Math.cos(S.th), Math.sin(S.th)];
             const r = [['$P$', '$' + TX.v(S.p, 2) + '$'], ['$f(P)=c$', '$' + TX.n(f(...S.p), 3) + '$'], ['$\\nabla f(P)$', '$' + TX.v(gr, 3) + '$'], ['$\\|\\nabla f(P)\\|$', '$' + TX.n(gn, 3) + '$'], '—', ['$\\frac{\\partial f}{\\partial v}(P)=\\nabla f(P)\\cdot v$', '$' + TX.n(CM.dot(gr, v), 3) + '$', 'forte']];
             if (gn > 1e-6) r.push(['ângulo entre $v$ e $\\nabla f$', CM.graus(Math.acos(CM.clamp(CM.dot(gr, v) / gn, -1, 1)))]);
             r.push(gn < 1e-6 ? '$\\nabla f(P)=0$: $P$ é ponto crítico, todas as derivadas direcionais são $0$.' : 'A derivada direcional é máxima com $v$ na direção de $\\nabla f$ (vale $\\|\\nabla f\\|$), mínima na direção oposta e nula na direção da linha de nível.');

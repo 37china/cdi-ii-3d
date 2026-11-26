@@ -1,32 +1,57 @@
-/* Estrutura da app: lista de matérias, modos Explorar / Explicar / Testa-te, controlos e rotas.
-   Cada matéria regista-se com CDI.materia({...}) num ficheiro em js/materias/. */
+/* Estrutura da app CDI II IST.
+   Cada matéria (uma linha do programa) regista-se com CDI.materia({...}) num ficheiro em js/materias/.
+   Modos: Aprender (definições → teoremas → exemplos), Laboratório (modelos livres) e Exercícios (aquecimento + exercícios). */
 (function () {
-  const CDI = (window.CDI = { materias: [] });
+  const CDI = (window.CDI = { materias: [], modelos: {}, antigos: {} });
   CDI.materia = (m) => CDI.materias.push(m);
+  /* modelos partilhados: registados por grupo e usados pelas matérias como 'grupo.modelo' */
+  CDI.modelosDe = (grupo, obj) => { obj.modelos.forEach((md) => (CDI.modelos[grupo + '.' + md.id] = md)); CDI.antigos[grupo] = obj; };
+  function resolverModelos(m) {
+    m.modelos = m.modelos.map((x) => {
+      if (typeof x === 'string') x = { de: x };
+      if (!x.de) return x;
+      const base = CDI.modelos[x.de];
+      if (!base) { console.error('Modelo em falta: ' + x.de); return { id: x.id || x.de, nome: x.nome || x.de, montar: () => {} }; }
+      return Object.assign({}, base, { id: x.id || x.de.split('.')[1], nome: x.nome || base.nome });
+    });
+  }
 
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  CDI.esc = esc;
 
-  const GRUPOS = ['Cálculo diferencial', 'Cálculo integral', 'Geometria em ℝ³'];
-  const MODOS = [['explorar', 'Explorar'], ['explicar', 'Explicar'], ['testa', 'Testa-te']];
+  const GRUPOS = ['Cálculo diferencial', 'Cálculo integral', 'Extra'];
+  const MODOS = [['aprender', 'Aprender'], ['lab', 'Laboratório'], ['exercicios', 'Exercícios']];
+  const TIPOS = { def: 'Definição', teo: 'Teorema', prop: 'Proposição', ex: 'Exemplo', contra: 'Contraexemplo', obs: 'Observação', met: 'Método', lema: 'Lema', cor: 'Corolário' };
+  /* endereços da versão anterior */
+  const ANTIGOS = { diferenciabilidade: 'campos', cadeia: 'campos', gradiente: 'campos', hessiana: 'taylor', lagrange: 'taylor', mudanca: 'integrais', coordenadas: 'integrais' };
 
-  let atual = null; // { m, modelo, modo, passo, M }
-  const pont = {}; // pontuação do Testa-te nesta sessão (não é guardada)
+  let atual = null; // { m, modo, modelo, passo, M, painel }
+  const pont = {}; // respostas do aquecimento nesta sessão (não são guardadas)
+  const exAbertos = {}; // estado dos exercícios abertos nesta sessão
+
+  /* ---------------- funções escritas pelo aluno ---------------- */
+  /* valor: texto, ou {r: [[expr, cond], …], z: expr} para funções por ramos */
+  CDI.compilar = (valor, vars, o = {}) => {
+    if (valor && typeof valor === 'object') return EX.ramos(valor.r.map(([e, c]) => ({ expr: e, cond: c })), valor.z, vars, o);
+    return EX.ler(valor, vars, o);
+  };
 
   /* ---------------- contexto de um modelo ---------------- */
-  function criarContexto(palco, painel, legenda) {
+  function criarContexto(palco, legenda) {
     const ctl = el('div', 'ctl'), out = el('div', 'out'), info = el('div', 'info');
-    const M = { S: {}, vistas: [], sync: [], leit: [], infos: [], loops: [], ctl, out, info, palco, legenda };
+    const M = { S: {}, F: {}, vistas: [], sync: [], leit: [], infos: [], loops: [], ctl, out, info, palco, legenda };
 
     M.vista3d = (o) => { const v = new Vista3D(palco, o); M.vistas.push(v); palco.dataset.n = M.vistas.length; return v; };
     M.plano = (o) => { const v = new Plano(palco, o); M.vistas.push(v); palco.dataset.n = M.vistas.length; return v; };
     M.cena = (v, fn) => v.definirCena((C) => fn(C, M.S));
     M.atualizar = () => {
-      M.vistas.forEach((v) => v.pedir());
       M.sync.forEach((f) => f());
+      M.vistas.forEach((v) => v.pedir());
       M.leit.forEach((f) => f());
       M.infos.forEach((f) => f());
+      guardarEstado();
     };
     M.definir = (o) => { Object.assign(M.S, o); M.atualizar(); };
 
@@ -74,19 +99,19 @@
       inp.addEventListener('input', () => { if (anim) anim.parar(); M.S[id] = parseFloat(inp.value); if (o.aoMudar) o.aoMudar(M.S[id]); M.atualizar(); });
       M.sync.push(() => { const v = M.S[id]; if (parseFloat(inp.value) !== v) inp.value = v; sai.textContent = fmt(v); });
       alvo(o).appendChild(r);
-      if (o.dica) alvo(o).appendChild(el('p', 'dica', o.dica));
+      if (o.dica) alvo(o).appendChild(el('p', 'dica', tex(o.dica)));
       return r;
     };
 
     M.escolha = (id, o) => {
       M.S[id] = o.valor;
-      const w = el('div', 'escolha' + (o.mono ? ' emono' : ''));
+      const w = el('div', 'escolha');
       if (o.rot) w.appendChild(el('span', 'rot', tex(o.rot)));
       const bs = el('div', 'chips');
       o.opcoes.forEach(([v, t]) => {
         const b = el('button', 'chip');
         b.type = 'button';
-        b.innerHTML = o.mono ? autoTex(t) : tex(t);
+        b.innerHTML = tex(t);
         b.addEventListener('click', () => { M.S[id] = v; if (o.aoMudar) o.aoMudar(v); M.atualizar(); });
         b._v = v;
         bs.appendChild(b);
@@ -118,6 +143,102 @@
       return w;
     };
 
+    /* caixa para escrever uma função: o.vars, o.ramos (permite ramos), o.componentes, o.exemplos [[rótulo, valor]], o.condicao */
+    M.funcao = (id, o) => {
+      M.S[id] = o.valor;
+      const w = el('div', 'fbox');
+      const vs = o.vars.map((v) => ({ 'θ': '\\theta', 'φ': '\\varphi', 'ρ': '\\rho' })[v] || v).join(';\\,');
+      w.innerHTML = `<label class="frot">${tex(o.rot || '$f(' + vs + ')=$')}</label>
+        <div class="fsimples"><input type="text" class="finp" spellcheck="false" autocomplete="off" autocapitalize="off" inputmode="text"></div>
+        <div class="framos" hidden></div>
+        <div class="fprev"></div><p class="ferr" hidden></p>
+        <div class="facoes"></div>`;
+      const inp = w.querySelector('.finp'), prev = w.querySelector('.fprev'), err = w.querySelector('.ferr'), ramosEl = w.querySelector('.framos'), simples = w.querySelector('.fsimples'), acoes = w.querySelector('.facoes');
+      inp.setAttribute('aria-label', 'Escreve a função');
+      inp.placeholder = o.exemplo || 'ex.: x^2 + y^2';
+      let ultimo = null;
+      const compilar = (v, mostrar = true) => {
+        if (o.opcional && typeof v === 'string' && !v.trim()) { M.F[id] = null; err.hidden = true; w.classList.remove('mal'); prev.innerHTML = '<span class="fvazio">(vazio)</span>'; return true; }
+        try {
+          const r = CDI.compilar(v, o.vars, { componentes: o.componentes, condicao: o.condicao });
+          M.F[id] = r;
+          err.hidden = true;
+          w.classList.remove('mal');
+          prev.innerHTML = tex('$' + (o.prefixo || '') + r.tex + '$');
+          return true;
+        } catch (e) {
+          if (mostrar) { err.textContent = e.message || 'Não percebi a expressão.'; err.hidden = false; w.classList.add('mal'); }
+          return false;
+        }
+      };
+      const lerUI = () => {
+        if (ramosEl.hidden) return inp.value;
+        const r = [...ramosEl.querySelectorAll('.framo')].map((d) => [d.querySelector('.fe').value, d.querySelector('.fc').value]);
+        return { r, z: ramosEl.querySelector('.fz').value };
+      };
+      let t = null;
+      const aoEscrever = () => {
+        clearTimeout(t);
+        t = setTimeout(() => {
+          const v = lerUI();
+          if (compilar(v)) { M.S[id] = v; ultimo = JSON.stringify(v); if (o.aoMudar) o.aoMudar(v); M.atualizar(); }
+        }, 280);
+      };
+      const linhaRamo = (e = '', c = '') => {
+        const d = el('div', 'framo');
+        d.innerHTML = '<input type="text" class="finp fe" spellcheck="false" autocomplete="off" aria-label="Expressão do ramo"><span>se</span><input type="text" class="finp fc" spellcheck="false" autocomplete="off" aria-label="Condição do ramo"><button type="button" class="fx" aria-label="Apagar ramo">×</button>';
+        d.querySelector('.fe').value = e; d.querySelector('.fc').value = c;
+        d.querySelector('.fx').addEventListener('click', () => { d.remove(); if (!ramosEl.querySelector('.framo')) desligarRamos(); else aoEscrever(); });
+        return d;
+      };
+      const desenharRamos = (v) => {
+        ramosEl.innerHTML = '';
+        v.r.forEach(([e, c]) => ramosEl.appendChild(linhaRamo(e, c)));
+        const z = el('div', 'framo fresto');
+        z.innerHTML = '<input type="text" class="finp fz" spellcheck="false" autocomplete="off" aria-label="Valor nos restantes pontos"><span>caso contrário</span>';
+        z.querySelector('.fz').value = v.z || '';
+        ramosEl.appendChild(z);
+        const mais = el('button', 'btn fino', '+ ramo'); mais.type = 'button';
+        mais.addEventListener('click', () => { ramosEl.insertBefore(linhaRamo(), z); });
+        ramosEl.appendChild(mais);
+      };
+      const ligarRamos = (v) => { simples.hidden = true; ramosEl.hidden = false; desenharRamos(v); };
+      const desligarRamos = () => { const z = ramosEl.querySelector('.fz'); inp.value = z ? z.value : inp.value; simples.hidden = false; ramosEl.hidden = true; aoEscrever(); };
+      w.addEventListener('input', aoEscrever);
+      if (o.ramos) {
+        const b = el('button', 'btn fino', 'Definir por ramos'); b.type = 'button';
+        b.addEventListener('click', () => { if (ramosEl.hidden) { ligarRamos({ r: [[inp.value, '(x;y)≠(0;0)']], z: '0' }); aoEscrever(); } else desligarRamos(); });
+        acoes.appendChild(b);
+        M.sync.push(() => { b.textContent = ramosEl.hidden ? 'Definir por ramos' : 'Uma só expressão'; });
+      }
+      if (o.exemplos && o.exemplos.length) {
+        const ex = el('div', 'fex');
+        ex.appendChild(el('span', null, 'Exemplos:'));
+        o.exemplos.forEach(([rot, v, extra]) => {
+          const b = el('button', 'chip mini'); b.type = 'button';
+          b.innerHTML = tex(rot);
+          b.addEventListener('click', () => { M.S[id] = v; if (extra) Object.assign(M.S, extra); if (o.aoMudar) o.aoMudar(v); M.atualizar(); });
+          ex.appendChild(b);
+        });
+        w.appendChild(ex);
+      }
+      if (o.ajuda !== false) w.appendChild(el('p', 'fajuda', 'Escreve como no caderno: <code>2x</code>, <code>xy</code>, <code>x^2</code> ou <code>x²</code>, <code>sen</code>/<code>sin</code>, <code>√</code> ou <code>sqrt</code>, <code>|x|</code>, <code>pi</code>, <code>e</code>, decimais com vírgula ou ponto' + (o.componentes > 1 ? ', componentes separadas por <code>;</code>' : '') + '.'));
+      /* quando o valor muda de fora (passos, exemplos, link) */
+      M.sync.push(() => {
+        const v = M.S[id], k = JSON.stringify(v);
+        if (k === ultimo) return;
+        ultimo = k;
+        if (v && typeof v === 'object') ligarRamos(v);
+        else { simples.hidden = false; ramosEl.hidden = true; if (document.activeElement !== inp) inp.value = v; }
+        compilar(v);
+      });
+      compilar(o.valor);
+      ultimo = null;
+      alvo(o).appendChild(w);
+      if (o.dica) alvo(o).appendChild(el('p', 'dica', tex(o.dica)));
+      return w;
+    };
+
     /* leituras: fn(S) → [[rótulo, valor, classe?], …]; '—' como separador */
     M.leituras = (titulo, fn, o = {}) => {
       const c = el('div', 'card leit');
@@ -128,7 +249,8 @@
       M.leit.push(() => {
         let rows;
         try { rows = fn(M.S); } catch (e) { console.error(e); rows = []; }
-        corpo.innerHTML = rows.map((r) => (r === '—' ? '<hr>' : typeof r === 'string' ? `<p class="veredito">${tex(r)}</p>` : `<div class="row ${r[2] || ''}"><span>${tex(r[0])}</span><b>${tex(r[1])}</b></div>`)).join('');
+        const h = rows.map((r) => (r === '—' ? '<hr>' : typeof r === 'string' ? `<p class="veredito">${tex(r)}</p>` : `<div class="row ${r[2] || ''}"><span>${tex(r[0])}</span><b>${tex(r[1])}</b></div>`)).join('');
+        if (corpo._h !== h) { corpo.innerHTML = h; corpo._h = h; }
       });
       return c;
     };
@@ -137,30 +259,56 @@
     M.texto = (conteudo, tipo = 'nota', o = {}) => {
       const c = el('div', 'box ' + tipo);
       (o.em || info).appendChild(c);
-      if (typeof conteudo === 'function') M.infos.push(() => { const h = conteudo(M.S); c.innerHTML = tex(h || ''); c.hidden = !h; });
+      if (typeof conteudo === 'function') M.infos.push(() => { const h = conteudo(M.S); const t = tex(h || ''); if (c._h !== t) { c.innerHTML = t; c._h = t; } c.hidden = !h; });
       else c.innerHTML = tex(conteudo);
       return c;
     };
 
-    M.legenda = (itens) => {
-      legenda.innerHTML = itens.map(([c, t]) => `<span><i style="background:${c}"></i>${tex(t)}</span>`).join('');
-    };
+    M.legenda = (itens) => { legenda.innerHTML = itens.map(([c, t]) => `<span><i style="background:${c}"></i>${tex(t)}</span>`).join(''); };
 
     M.loop = (fn) => {
       let vivo = true, t0 = performance.now();
-      const L = { parar: () => (vivo = false) };
+      const L = { parar: () => (vivo = false), fixo: true };
       const passo = (t) => { if (!vivo) return; fn((t - t0) / 1000); t0 = t; requestAnimationFrame(passo); };
       requestAnimationFrame(passo);
       M.loops.push(L);
       return L;
     };
-    M.parar = () => { M.loops.forEach((l) => l.parar()); M.loops = []; };
-    M.destruir = () => { M.parar(); M.vistas.forEach((v) => v.destruir()); };
+    /* pára as animações das barras (os laços fixos, como o fluido, continuam) */
+    M.parar = () => { M.loops.filter((l) => !l.fixo).forEach((l) => l.parar()); M.loops = M.loops.filter((l) => l.fixo); };
+    M.destruir = () => { M.loops.forEach((l) => l.parar()); M.loops = []; M.vistas.forEach((v) => v.destruir()); };
     M.cores = () => {
       const g = (n, f) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f;
-      return { u: g('--c1', '#FF9548'), v: g('--c2', '#34D399'), n: g('--c3', '#A78BFA'), b: g('--c4', '#60A5FA'), r: g('--st-bad', '#F87171'), a: g('--st-acc', '#F472B6'), m: g('--st-muted', '#8A97AD'), i: g('--st-ink', '#E8EDF5'), sup: g('--sup', '#4F8CF0'), sup2: g('--sup2', '#8B7CF6'), ouro: g('--ouro', '#F5C542') };
+      return { u: g('--c1', '#FF9548'), v: g('--c2', '#34D399'), n: g('--c3', '#A78BFA'), b: g('--c4', '#60A5FA'), r: g('--st-bad', '#F87171'), a: g('--st-acc', '#F472B6'), m: g('--st-muted', '#8A97AD'), i: g('--st-ink', '#E8EDF5'), sup: g('--sup', '#4F8CF0'), sup2: g('--sup2', '#8B7CF6'), ouro: g('--ouro', '#F5C542'), ok: g('--st-ok', '#4ADE80') };
     };
     return M;
+  }
+
+  /* ---------------- estado no link ---------------- */
+  let tGuardar = null, aAplicar = false;
+  function estadoCompacto(S) {
+    const o = {};
+    for (const k in S) {
+      if (k[0] === '_') continue;
+      const v = S[k];
+      if (typeof v === 'number') o[k] = +v.toFixed(4);
+      else if (Array.isArray(v)) o[k] = v.map((x) => (typeof x === 'number' ? +x.toFixed(4) : x));
+      else o[k] = v;
+    }
+    return o;
+  }
+  function guardarEstado() {
+    if (aAplicar || !atual || atual.modo === 'exercicios') return;
+    clearTimeout(tGuardar);
+    tGuardar = setTimeout(() => { if (atual && atual.M) escreverRota(estadoCompacto(atual.M.S)); }, 350);
+  }
+  function escreverRota(estado) {
+    const a = atual;
+    let h = '#/' + a.m.id + '/' + a.modo;
+    if (a.modo === 'aprender') h += '/' + (a.passo + 1);
+    else if (a.modo === 'lab') h += '/' + a.modelo;
+    if (estado && a.modo !== 'exercicios') h += '?s=' + encodeURIComponent(JSON.stringify(estado));
+    if (location.hash !== h) history.replaceState(null, '', h);
   }
 
   /* ---------------- navegação ---------------- */
@@ -178,37 +326,38 @@
         const a = el('a', 'item');
         a.href = '#/' + m.id;
         a.dataset.id = m.id;
-        a.innerHTML = `<span class="num">${CDI.materias.indexOf(m) + 1}</span><span>${esc(m.curto || m.titulo)}</span>`;
+        a.innerHTML = `<span class="num">${m.extra ? '+' : m.ordem}</span><span>${esc(m.curto || m.titulo)}</span>`;
         nav.appendChild(a);
       });
     });
   }
 
   function rota() {
-    const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
-    const [id, modelo, modo, passo] = h.split('/');
-    return { id, modelo, modo: modo || 'explorar', passo: passo ? parseInt(passo, 10) - 1 : 0 };
-  }
-  function irPara(id, modelo, modo, passo) {
-    let h = '#/' + id;
-    if (modelo) h += '/' + modelo;
-    if (modo && modo !== 'explorar') h += '/' + modo + (passo != null ? '/' + (passo + 1) : '');
-    if (location.hash !== h) history.replaceState(null, '', h);
+    const bruto = location.hash.replace(/^#\/?/, '');
+    const [cam, q] = bruto.split('?');
+    const partes = decodeURIComponent(cam || '').split('/');
+    let [id, modo, arg] = partes;
+    if (id && !CDI.materias.find((m) => m.id === id) && ANTIGOS[id]) { id = ANTIGOS[id]; modo = null; arg = null; }
+    if (!MODOS.find(([k]) => k === modo)) { modo = 'aprender'; arg = null; }
+    let estado = null;
+    if (q) { const m = /(?:^|&)s=([^&]*)/.exec(q); if (m) { try { estado = JSON.parse(decodeURIComponent(m[1])); } catch (e) { estado = null; } } }
+    return { id, modo, arg, estado };
   }
 
   function inicio() {
     if (atual && atual.M) atual.M.destruir();
     atual = null;
     document.body.classList.add('home');
+    document.body.dataset.modo = '';
     document.querySelectorAll('#lista .item').forEach((a) => a.classList.toggle('on', a.classList.contains('ini')));
-    $('#kicker').textContent = 'CDI II · Teóricas (Alameda)';
-    $('#titulo').textContent = 'Modelos 3D interativos';
+    $('#kicker').textContent = 'Cálculo Diferencial e Integral II · IST';
+    $('#titulo').textContent = 'Aprender a partir das definições';
     $('#modos').hidden = true;
     $('#modelos').innerHTML = '';
     const corpo = $('#corpo');
     corpo.innerHTML = '';
     const w = el('div', 'home-w');
-    w.innerHTML = `<p class="lead">Cada matéria tem modelos para mexer à vontade (<b>Explorar</b>), uma sequência de passos para mostrar a alguém (<b>Explicar</b>) e perguntas com correção (<b>Testa-te</b>). Roda as figuras com o dedo ou o rato; as contas mudam ao vivo.</p>`;
+    w.innerHTML = `<p class="lead">Cada matéria segue uma linha do programa e tem três partes: <b>Aprender</b> parte das definições e avança para os teoremas, exemplos e contraexemplos, com um modelo ao lado em que mexes à vontade; o <b>Laboratório</b> deixa-te escrever as tuas próprias funções; os <b>Exercícios</b> têm um aquecimento e exercícios do tipo dos testes, com dicas, resolução passo a passo ou só a solução.</p>`;
     GRUPOS.forEach((g) => {
       const ms = CDI.materias.filter((m) => m.grupo === g);
       if (!ms.length) return;
@@ -217,12 +366,12 @@
       ms.forEach((m) => {
         const a = el('a', 'mcard');
         a.href = '#/' + m.id;
-        a.innerHTML = `<span class="num">${CDI.materias.indexOf(m) + 1}</span><b>${esc(m.titulo)}</b><span>${tex(m.resumo)}</span>`;
+        a.innerHTML = `<span class="num">${m.extra ? '+' : m.ordem}</span><b>${tex(m.titulo)}</b><span>${tex(m.resumo)}</span>`;
         grid.appendChild(a);
       });
       w.appendChild(grid);
     });
-    w.appendChild(el('p', 'priv', '<b>Começa sempre do zero.</b> A app não tem contas nem servidor e não guarda nada no teu dispositivo. Podes partilhar o link de qualquer modelo ou passo: o endereço muda à medida que navegas.'));
+    w.appendChild(el('p', 'priv', '<b>Começa sempre do zero.</b> A app não tem contas nem servidor e não guarda nada no teu dispositivo. Para partilhar o que estás a ver, copia o endereço: leva a matéria, o passo e as funções que escreveste.'));
     corpo.appendChild(w);
     fecharMenu();
     window.scrollTo(0, 0);
@@ -233,72 +382,89 @@
     if (!m) return inicio();
     document.body.classList.remove('home');
     document.querySelectorAll('#lista .item').forEach((a) => a.classList.toggle('on', a.dataset.id === m.id));
-    $('#kicker').textContent = m.grupo + (m.paginas ? ' · ' + m.paginas : '');
-    $('#titulo').textContent = m.titulo;
+    $('#kicker').textContent = (m.extra ? 'Extra' : 'Programa · ' + m.ordem) + (m.paginas ? ' · ' + m.paginas : '');
+    $('#titulo').innerHTML = tex(m.titulo);
+    let modo = r.modo;
+    if (modo === 'aprender' && !(m.aprender || []).length) modo = 'lab';
+    document.body.dataset.modo = modo;
     const modos = $('#modos');
     modos.hidden = false;
     modos.innerHTML = '';
-    const modoOk = MODOS.find(([k]) => k === r.modo && (k !== 'explicar' || (m.explicar || []).length) && (k !== 'testa' || (m.testa || []).length)) ? r.modo : 'explorar';
     MODOS.forEach(([k, t]) => {
-      if (k === 'explicar' && !(m.explicar || []).length) return;
-      if (k === 'testa' && !(m.testa || []).length) return;
+      if (k === 'aprender' && !(m.aprender || []).length) return;
+      if (k === 'exercicios' && !(m.aquecimento || []).length && !(m.exercicios || []).length) return;
       const b = el('button', null, t);
       b.type = 'button';
-      b.setAttribute('aria-pressed', k === modoOk);
-      b.addEventListener('click', () => { const md = k === 'explorar' ? (atual && atual.modelo) : null; abrir({ id: m.id, modelo: md, modo: k, passo: 0 }); });
+      b.setAttribute('aria-pressed', k === modo);
+      b.addEventListener('click', () => abrir({ id: m.id, modo: k, arg: k === 'lab' && atual && atual.m === m ? atual.modelo : null }));
       modos.appendChild(b);
     });
-
-    let modeloId = r.modelo && m.modelos.find((x) => x.id === r.modelo) ? r.modelo : m.modelos[0].id;
-    let passo = Math.max(0, r.passo || 0);
-    if (modoOk === 'explicar') { passo = Math.min(passo, m.explicar.length - 1); modeloId = m.explicar[passo].modelo || modeloId; }
-    if (modoOk === 'testa') { passo = Math.min(passo, m.testa.length - 1); modeloId = m.testa[passo].modelo || modeloId; }
-    const mesmo = atual && atual.m === m && atual.modelo === modeloId && atual.modo === modoOk;
-    if (!mesmo) montarModelo(m, modeloId, modoOk);
-    atual.passo = passo;
-    if (modoOk === 'explicar') aplicarPasso(m, passo);
-    if (modoOk === 'testa') mostrarPergunta(m, passo);
-    irPara(m.id, modeloId, modoOk, modoOk === 'explorar' ? null : passo);
     fecharMenu();
+    if (modo === 'exercicios') return abrirExercicios(m);
+
+    let passo = 0, modeloId;
+    if (modo === 'aprender') {
+      passo = CM.clamp((parseInt(r.arg, 10) || 1) - 1, 0, m.aprender.length - 1);
+      modeloId = m.aprender[passo].modelo || m.modelos[0].id;
+    } else modeloId = m.modelos.find((x) => x.id === r.arg) ? r.arg : m.modelos[0].id;
+
+    const mesmo = atual && atual.m === m && atual.modelo === modeloId && atual.modo === modo && atual.M;
+    if (!mesmo) montarModelo(m, modeloId, modo);
+    atual.passo = passo;
+    aAplicar = true;
+    if (modo === 'aprender') aplicarPasso(m, passo, !!mesmo);
+    if (r.estado) atual.M.definir(r.estado);
+    aAplicar = false;
+    escreverRota(r.estado ? estadoCompacto(atual.M.S) : null);
   }
 
   function montarModelo(m, modeloId, modo) {
     if (atual && atual.M) atual.M.destruir();
     const corpo = $('#corpo');
     corpo.innerHTML = '';
-    // separadores de modelos (no Explorar)
+    corpo.className = '';
     const ch = $('#modelos');
     ch.innerHTML = '';
-    if (modo === 'explorar' && m.modelos.length > 1) {
+    if (modo === 'lab' && m.modelos.length > 1) {
       m.modelos.forEach((md) => {
         const b = el('button', 'chip', tex(md.nome));
         b.type = 'button';
         b.setAttribute('aria-pressed', md.id === modeloId);
-        b.addEventListener('click', () => abrir({ id: m.id, modelo: md.id, modo: 'explorar' }));
+        b.addEventListener('click', () => abrir({ id: m.id, modo: 'lab', arg: md.id }));
         ch.appendChild(b);
       });
     }
     const palcoW = el('section', 'palco');
     const vistas = el('div', 'vistas');
     const leg = el('div', 'legenda');
-    palcoW.append(vistas, leg);
+    const troca = el('div', 'vtroca');
+    palcoW.append(troca, vistas, leg);
     const painel = el('section', 'painel');
     corpo.append(palcoW, painel);
-    const M = criarContexto(vistas, painel, leg);
+    const M = criarContexto(vistas, leg);
     const md = m.modelos.find((x) => x.id === modeloId);
     atual = { m, modelo: modeloId, modo, passo: 0, M, painel };
     try { md.montar(M); } catch (e) { console.error(e); painel.appendChild(el('p', 'err', 'Erro ao montar o modelo: ' + esc(e.message))); }
-    if (md.sobre) M.texto(md.sobre, 'nota');
+    /* no telemóvel, com duas vistas, mostra-se uma de cada vez */
+    if (M.vistas.length > 1) {
+      vistas.dataset.sel = '0';
+      M.vistas.forEach((v, i) => {
+        const b = el('button', null, esc(v.opts && v.opts.nomeVista ? v.opts.nomeVista : v instanceof Plano ? 'Vista 2D' : 'Vista 3D'));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', i === 0);
+        b.addEventListener('click', () => { vistas.dataset.sel = String(i); troca.querySelectorAll('button').forEach((x, j) => x.setAttribute('aria-pressed', j === i)); requestAnimationFrame(() => M.vistas.forEach((q) => q.tamanho())); });
+        troca.appendChild(b);
+      });
+    }
     organizarPainel();
     M.atualizar();
-    // as vistas leem o tamanho depois de entrar na página
     requestAnimationFrame(() => M.vistas.forEach((v) => v.tamanho()));
   }
 
   function organizarPainel() {
     const { M, painel, modo } = atual;
     painel.innerHTML = '';
-    if (modo === 'explorar') {
+    if (modo === 'lab') {
       const c = el('div', 'card');
       c.appendChild(M.ctl);
       if (M.ctl.childElementCount) painel.appendChild(c);
@@ -307,67 +473,120 @@
       const topo = el('div', 'card passos');
       painel.appendChild(topo);
       atual.topo = topo;
-      if (modo === 'testa') {
-        const v = el('details', 'card mexer');
-        v.innerHTML = '<summary>Ver os valores do modelo</summary>';
-        v.appendChild(M.out);
-        painel.appendChild(v);
-      } else painel.appendChild(M.out);
       const d = el('details', 'card mexer');
-      d.innerHTML = '<summary>Mexer nos controlos</summary>';
+      d.open = true;
+      d.innerHTML = '<summary>Mexer no modelo</summary>';
       d.appendChild(M.ctl);
       if (M.ctl.childElementCount) painel.appendChild(d);
-      if (modo === 'explicar') painel.appendChild(M.info);
+      painel.appendChild(M.out);
     }
   }
 
-  /* ---------------- Explicar ---------------- */
-  function aplicarPasso(m, k) {
-    const ps = m.explicar, p = ps[k];
+  /* ---------------- Aprender ---------------- */
+  function aplicarPasso(m, k, mesmo) {
+    const ps = m.aprender, p = ps[k];
     const { M, topo } = atual;
     M.parar();
     if (p.vista && M.vistas[0] && M.vistas[0].vistaDe) M.vistas[0].vistaDe(p.vista[0], p.vista[1]);
-    M.definir(Object.assign({ destaque: null }, p.estado || {}));
-    topo.innerHTML = `<div class="ptopo"><span>Passo ${k + 1} de ${ps.length}</span></div>
-      <ol class="plista">${ps.map((q, i) => `<li class="${i === k ? 'on' : i < k ? 'feito' : ''}"><button type="button" data-i="${i}"><span class="pn">${i + 1}</span><span>${tex(q.titulo)}</span></button>${i === k ? `<div class="ptexto">${tex(q.texto)}</div>` : ''}</li>`).join('')}</ol>
-      <div class="pnav"><button type="button" class="btn" data-d="-1" ${k === 0 ? 'disabled' : ''}>← Anterior</button><button type="button" class="btn pri" data-d="1" ${k === ps.length - 1 ? 'disabled' : ''}>Seguinte →</button></div>`;
+    M.definir(Object.assign({}, p.estado || {}));
+    const tipo = TIPOS[p.tipo] || '';
+    topo.innerHTML = `<div class="ptopo"><span>Passo ${k + 1} de ${ps.length}</span><span class="pprog"><i style="width:${(100 * (k + 1)) / ps.length}%"></i></span></div>
+      ${tipo ? `<span class="tipo t-${p.tipo}">${tipo}</span>` : ''}
+      <h2 class="ptit">${tex(p.titulo)}</h2>
+      <div class="ptexto">${tex(p.texto)}</div>
+      ${p.demo ? `<details class="demo"><summary>Esboço da demonstração</summary><div>${tex(p.demo)}</div></details>` : ''}
+      ${p.experimenta ? `<p class="exp"><b>Experimenta:</b> ${tex(p.experimenta)}</p>` : ''}
+      <div class="pnav"><button type="button" class="btn" data-d="-1" ${k === 0 ? 'disabled' : ''}>← Anterior</button><button type="button" class="btn pri" data-d="1" ${k === ps.length - 1 ? 'disabled' : ''}>Seguinte →</button></div>
+      <details class="indice"><summary>Todos os passos</summary><ol>${ps.map((q, i) => `<li class="${i === k ? 'on' : ''}"><button type="button" data-i="${i}"><span class="tp">${TIPOS[q.tipo] || ''}</span> ${tex(q.titulo)}</button></li>`).join('')}</ol></details>`;
     topo.onclick = (e) => {
       const b = e.target.closest('button');
       if (!b) return;
       const i = b.dataset.i != null ? +b.dataset.i : k + +b.dataset.d;
-      if (i >= 0 && i < ps.length) abrir({ id: m.id, modelo: ps[i].modelo, modo: 'explicar', passo: i });
+      if (i >= 0 && i < ps.length) { abrir({ id: m.id, modo: 'aprender', arg: String(i + 1) }); if (matchMedia('(max-width: 820px)').matches) topo.scrollIntoView({ block: 'start' }); }
     };
   }
 
-  /* ---------------- Testa-te ---------------- */
-  function mostrarPergunta(m, k) {
-    const qs = m.testa, q = qs[k];
-    const { M, topo } = atual;
+  /* ---------------- Exercícios ---------------- */
+  function abrirExercicios(m) {
+    if (atual && atual.M) atual.M.destruir();
+    atual = { m, modo: 'exercicios', M: null };
+    escreverRota(null);
+    $('#modelos').innerHTML = '';
+    const corpo = $('#corpo');
+    corpo.innerHTML = '';
+    corpo.className = 'exs';
+    const col = el('div', 'excol');
+    corpo.appendChild(col);
+    if ((m.aquecimento || []).length) {
+      const aq = el('section', 'card aquec');
+      col.appendChild(aq);
+      mostrarAquecimento(m, aq, 0);
+    }
+    const lista = m.exercicios || [];
+    const est = (exAbertos[m.id] = exAbertos[m.id] || {});
+    lista.forEach((ex0, i) => {
+      const c = el('section', 'card exc');
+      col.appendChild(c);
+      const desenhar = () => {
+        const ex = est[i] && est[i].gerado ? est[i].gerado : ex0;
+        const s = (est[i] = est[i] || { modo: null, passo: 0 });
+        const gerador = ex0.gerar && m.geradores && m.geradores[ex0.gerar];
+        const passos = ex.passos || [];
+        let corpoRes = '';
+        if (s.modo === 'dicas') corpoRes = `<div class="box chave"><b class="t">Dicas</b>${(ex.dicas || []).map((d) => `<p>${tex(d)}</p>`).join('') || '<p>Este exercício não tem dicas.</p>'}</div>`;
+        if (s.modo === 'passos') corpoRes = `<ol class="exp-passos">${passos.slice(0, s.passo + 1).map((p) => `<li>${tex(p)}</li>`).join('')}</ol>${s.passo < passos.length - 1 ? '<button type="button" class="btn pri" data-a="mais">Próximo passo</button>' : `<div class="box ok"><b class="t">Solução</b>${tex(ex.solucao)}</div>`}`;
+        if (s.modo === 'sol') corpoRes = `<div class="box ok"><b class="t">Solução</b>${tex(ex.solucao)}</div>`;
+        c.innerHTML = `<div class="exh"><span class="exn">${i + 1}</span><div><h3 class="ext">${tex(ex.titulo)}</h3>${ex.tipo ? `<span class="extp">${esc(ex.tipo)}</span>` : ''}</div></div>
+          <div class="exe">${tex(ex.enunciado)}</div>
+          <div class="btns exb">
+            <button type="button" class="btn" data-a="dicas" aria-pressed="${s.modo === 'dicas'}">Dicas</button>
+            <button type="button" class="btn" data-a="passos" aria-pressed="${s.modo === 'passos'}">Passo a passo</button>
+            <button type="button" class="btn" data-a="sol" aria-pressed="${s.modo === 'sol'}">Só a solução</button>
+            ${ex.modelo ? '<button type="button" class="btn" data-a="modelo">Abrir no modelo</button>' : ''}
+            ${gerador ? '<button type="button" class="btn pri" data-a="gerar">Gerar outro</button>' : ''}
+          </div>${corpoRes}`;
+        c.onclick = (e) => {
+          const b = e.target.closest('button');
+          if (!b) return;
+          const a = b.dataset.a;
+          if (a === 'dicas' || a === 'passos' || a === 'sol') { s.modo = s.modo === a ? null : a; s.passo = 0; desenhar(); }
+          if (a === 'mais') { s.passo++; desenhar(); }
+          if (a === 'gerar') { try { s.gerado = gerador(); } catch (er) { console.error(er); } s.modo = null; s.passo = 0; desenhar(); }
+          if (a === 'modelo') abrir({ id: m.id, modo: 'lab', arg: ex.modelo, estado: ex.estado || null });
+        };
+      };
+      desenhar();
+    });
+    if (!lista.length && !(m.aquecimento || []).length) col.appendChild(el('p', 'priv', 'Ainda sem exercícios nesta matéria.'));
+    window.scrollTo(0, 0);
+  }
+
+  function mostrarAquecimento(m, c, k) {
+    const qs = m.aquecimento, q = qs[k];
     const P = (pont[m.id] = pont[m.id] || { r: {} });
-    M.parar();
-    if (q.estado) M.definir(q.estado);
     const resp = P.r[k];
     const certas = Object.keys(P.r).filter((i) => P.r[i] === qs[i].certa).length;
     const feitas = Object.keys(P.r).length;
-    topo.innerHTML = `<div class="ptopo"><span>Pergunta ${k + 1} de ${qs.length}</span><span class="mono">${certas}/${feitas} certas</span></div>
+    c.innerHTML = `<div class="ptopo"><span>Aquecimento · ${k + 1} de ${qs.length}</span><span class="mono">${certas}/${feitas} certas</span></div>
       <p class="perg">${tex(q.p)}</p>
       <div class="ops">${q.op.map((o, i) => `<button type="button" class="op ${resp == null ? '' : i === q.certa ? 'certa' : i === resp ? 'errada' : 'apagada'}" data-o="${i}" ${resp != null ? 'disabled' : ''}><span class="ol">${'ABCDE'[i]}</span><span>${tex(o)}</span></button>`).join('')}</div>
-      ${resp != null ? `<div class="box ${resp === q.certa ? 'ok' : 'aviso'}"><b>${resp === q.certa ? 'Certo.' : 'Não é essa.'}</b> ${tex(q.porque)}</div>` : q.dica ? `<details class="dicaq"><summary>Dica</summary><p>${tex(q.dica)}</p></details>` : ''}
-      <div class="pnav"><button type="button" class="btn" data-d="-1" ${k === 0 ? 'disabled' : ''}>← Anterior</button>${k === qs.length - 1 ? `<button type="button" class="btn" data-rec>Recomeçar</button>` : `<button type="button" class="btn pri" data-d="1">Seguinte →</button>`}</div>`;
-    topo.onclick = (e) => {
+      ${resp != null ? `<div class="box ${resp === q.certa ? 'ok' : 'aviso'}"><b>${resp === q.certa ? 'Certo.' : 'Não é essa.'}</b> ${tex(q.porque)}</div>` : ''}
+      <div class="pnav"><button type="button" class="btn" data-d="-1" ${k === 0 ? 'disabled' : ''}>← Anterior</button>${k === qs.length - 1 ? '<button type="button" class="btn" data-rec>Recomeçar</button>' : '<button type="button" class="btn pri" data-d="1">Seguinte →</button>'}</div>`;
+    c.onclick = (e) => {
       const b = e.target.closest('button');
       if (!b) return;
-      if (b.dataset.o != null) { P.r[k] = +b.dataset.o; if (q.depois) M.definir(q.depois); mostrarPergunta(m, k); return; }
-      if (b.dataset.rec != null) { pont[m.id] = { r: {} }; abrir({ id: m.id, modo: 'testa', passo: 0 }); return; }
+      if (b.dataset.o != null) { P.r[k] = +b.dataset.o; mostrarAquecimento(m, c, k); return; }
+      if (b.dataset.rec != null) { pont[m.id] = { r: {} }; mostrarAquecimento(m, c, 0); return; }
       const i = k + +b.dataset.d;
-      if (i >= 0 && i < qs.length) abrir({ id: m.id, modelo: qs[i].modelo, modo: 'testa', passo: i, manter: true });
+      if (i >= 0 && i < qs.length) mostrarAquecimento(m, c, i);
     };
   }
 
-  /* ---------------- menu no telemóvel e tema ---------------- */
+  /* ---------------- menu, tema e modo apresentação ---------------- */
   function fecharMenu() { document.body.classList.remove('menu'); }
   function iniciar() {
-    CDI.materias.sort((a, b) => GRUPOS.indexOf(a.grupo) - GRUPOS.indexOf(b.grupo) || (a.ordem || 0) - (b.ordem || 0));
+    CDI.materias.sort((a, b) => (a.extra ? 1 : 0) - (b.extra ? 1 : 0) || (a.ordem || 0) - (b.ordem || 0));
+    CDI.materias.forEach(resolverModelos);
     montarNav();
     $('#bmenu').addEventListener('click', () => document.body.classList.toggle('menu'));
     $('#veu').addEventListener('click', fecharMenu);
@@ -379,13 +598,22 @@
       if (v === 'auto') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', v === 'claro' ? 'light' : 'dark');
       $('#btema').textContent = 'Tema: ' + (v === 'auto' ? 'automático' : v);
-      if (atual) atual.M.atualizar();
+      if (atual && atual.M) atual.M.atualizar();
     });
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => atual && atual.M.atualizar());
+    $('#bapres').addEventListener('click', () => {
+      const on = !document.body.classList.contains('apres');
+      document.body.classList.toggle('apres', on);
+      $('#bapres').setAttribute('aria-pressed', on);
+      try { if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); else if (!on && document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* sem ecrã inteiro */ }
+      setTimeout(() => atual && atual.M && atual.M.vistas.forEach((v) => v.tamanho()), 250);
+    });
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('apres')) { document.body.classList.remove('apres'); $('#bapres').setAttribute('aria-pressed', false); setTimeout(() => atual && atual.M && atual.M.vistas.forEach((v) => v.tamanho()), 250); } });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => atual && atual.M && atual.M.atualizar());
     window.addEventListener('hashchange', () => { const r = rota(); if (!r.id) inicio(); else abrir(r); });
     const r = rota();
     if (!r.id) inicio(); else abrir(r);
     if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+  CDI.abrir = (id, modo, arg, estado) => abrir({ id, modo, arg, estado });
   document.addEventListener('DOMContentLoaded', iniciar);
 })();

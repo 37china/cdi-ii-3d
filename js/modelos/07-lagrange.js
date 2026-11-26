@@ -44,7 +44,7 @@
     });
   }
 
-  CDI.materia({
+  CDI.modelosDe('lagrange', {
     id: 'lagrange', ordem: 7, grupo: 'Cálculo diferencial', curto: 'Extremos condicionados', titulo: 'Extremos condicionados (Lagrange)', paginas: 'pp. 33–35',
     resumo: 'Máximos e mínimos de $f$ sobre uma curva ou superfície: $\\nabla f$ é combinação dos gradientes das restrições.',
     modelos: [
@@ -54,31 +54,37 @@
           const cor = M.cores();
           const V = M.vista3d({ ext: 2.1, alvo: [0, 0, 0.3], yaw: -0.75, pitch: 0.5, dica: 'Altura proporcional a f · arrasta para rodar' });
           const P = M.plano({ janela: [-2.6, 2.6, -1.9, 1.9] });
-          M.escolha('f', { rot: 'Função $f(x;y)$', opcoes: Object.keys(F2).map((k) => [k, '$' + F2[k].tex + '$']), valor: 'soma' });
-          M.escolha('g', { rot: 'Restrição $g=0$', opcoes: Object.keys(G2).map((k) => [k, '$' + G2[k].tex + '$']), valor: 'circ' });
+          const SF = { soma: 'x+y', prod: 'xy', elip: 'x^2+4y^2', dist: '(x-2)^2+(y-1)^2' }, SG = { circ: 'x^2+y^2-1', elip: 'x^2/4+y^2-1' };
+          M.funcao('f', { rot: '$f(x;y)=$', vars: ['x', 'y'], valor: 'x+y', exemplos: Object.keys(F2).map((k) => ['$' + F2[k].tex + '$', SF[k]]) });
+          M.funcao('g', { rot: 'Restrição $g(x;y)=0$, com $g(x;y)=$', vars: ['x', 'y'], valor: 'x^2+y^2-1', exemplos: [['$x^2+y^2=1$', SG.circ], ['$\\frac{x^2}{4}+y^2=1$', SG.elip], ['$x^4+y^4=1$', 'x^4+y^4-1'], ['$x+y=1$', 'x+y-1']] });
+          let curva = null;
+          const cG = (S) => {
+            const ch = JSON.stringify(S.g);
+            if (!curva || curva.ch !== ch) { const k = Object.keys(SG).find((q) => SG[q] === S.g); const w = k ? G2[k].w : [-2.5, 2.5, -1.8, 1.8]; curva = Object.assign(CDI.curvaImplicita(M.F.g.f, w, 200), { ch }); }
+            return curva;
+          };
           M.barra('t', { rot: '$t$', cor: cor.n, min: 0, max: 2 * PI, valor: 0.3, circular: true, nome: 'posição na restrição', dur: 9000 });
           M.caixa('np', { rot: 'Plano horizontal à altura $f(P)$', valor: true });
-          M.botoes([['Ir para o extremo seguinte', () => { const cs = candidatos(F2[M.S.f].f, G2[M.S.g]).sort((a, b) => a.t - b.t); const q = cs.find((c) => c.t > M.S.t + 1e-3) || cs[0]; M.definir({ t: q.t }); }]]);
+          M.botoes([['Ir para o extremo seguinte', () => { const cs = est(M.S).cand.slice().sort((a, b) => a.t - b.t); const q = cs.find((c) => c.t > M.S.t + 1e-3) || cs[0]; if (q) M.definir({ t: q.t }); }]]);
           let cache = null;
           const est = (S) => {
-            const f = F2[S.f].f, c = G2[S.g], p = c.g(S.t), gf = CM.grad(f, ...p), gg = CM.grad(c.G, ...p);
+            const f = M.F.f.f, c = cG(S), p = c.g(S.t), gf = CM.grad(f, ...p), gg = CM.grad(c.G, ...p);
             const par = Math.abs(gf[0] * gg[1] - gf[1] * gg[0]) / (Math.hypot(...gf) * Math.hypot(...gg) + 1e-12);
-            const chave = S.f + S.g;
+            const chave = JSON.stringify([S.f, S.g]);
             if (!cache || cache.chave !== chave) {
               const [x0, x1, y0, y1] = c.w;
               let m = 0;
-              for (let i = 0; i <= 20; i++) for (let j = 0; j <= 20; j++) m = Math.max(m, Math.abs(f(x0 + ((x1 - x0) * i) / 20, y0 + ((y1 - y0) * j) / 20)));
-              cache = { chave, k: 1.5 / Math.max(m, 1e-9), cand: candidatos(f, c) };
+              const fx = CDI.faixaZ(f, x0, x1, y0, y1); m = Math.max(Math.abs(fx[0]), Math.abs(fx[1]));
+              cache = { chave, k: 1.5 / Math.max(m, 1e-9), cand: c.vazia ? [] : candidatos(f, c) };
             }
             return { f, c, p, gf, gg, par, k: cache.k, cand: cache.cand };
           };
           M.cena(V, (C, S) => {
             const { f, c, p, k, cand } = est(S);
             const [x0, x1, y0, y1] = c.w;
-            C.eixos({ x: [x0 - 0.1, x1 + 0.2], y: [y0 - 0.1, y1 + 0.2], z: [-1.6, 1.9], nomes: ['x', 'y', 'f'] });
-            C.grafico((x, y) => k * f(x, y), x0, x1, y0, y1, 44, { alfa: 0.5 });
-            C.param((t) => [...c.g(t), 0.003], 0, 2 * PI, 160, { cor: cor.b, larg: 2, alfa: 0.8 });
-            C.param((t) => [...c.g(t), k * f(...c.g(t))], 0, 2 * PI, 240, { cor: cor.b, larg: 3.6 });
+            CDI.grafico(C, f, { k, faixa: [-1.6 / k, 1.9 / k], caixa: [x0, x1, y0, y1], n: 44, alfa: 0.5 });
+            C.eixos({ x: [x0 - 0.1, x1 + 0.2], y: [y0 - 0.1, y1 + 0.2], z: [-1.6, 1.9], nomes: ['x', 'y', 'f'], esc: [1, 1, k], marcas: true });
+            c.comps.forEach((q) => { C.curva(q.map((r) => [r[0], r[1], 0.003]), { cor: cor.b, larg: 2, alfa: 0.8 }); C.curva(q.map((r) => [r[0], r[1], k * f(r[0], r[1])]), { cor: cor.b, larg: 3.6 }); });
             const z = k * f(...p);
             if (S.np) {
               C.poli([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], { cor: cor.ouro, alfa: 0.16, plano: 1 });
@@ -96,7 +102,7 @@
             const vs = []; for (let i = 0; i < 25; i++) vs.push(f(x0 + ((x1 - x0) * (i % 5)) / 4, y0 + ((y1 - y0) * Math.floor(i / 5)) / 4));
             const lo = Math.min(...vs), hi = Math.max(...vs);
             for (let i = 1; i < 16; i++) Gc.nivel(f, lo + ((hi - lo) * i) / 16, { cor: cor.m, larg: 1, alfa: 0.45 });
-            Gc.param(c.g, 0, 2 * PI, 200, { cor: cor.b, larg: 3 });
+            c.comps.forEach((q) => Gc.curva(q, { cor: cor.b, larg: 3 }));
             Gc.nivel(f, f(...p), { cor: cor.ouro, larg: 2 });
             const n1 = Math.hypot(...gf), n2 = Math.hypot(...gg);
             if (n1 > 1e-9) Gc.seta(p, CM.mul(gf, 0.6 / n1), { cor: cor.v, rot: '$∇f$' });

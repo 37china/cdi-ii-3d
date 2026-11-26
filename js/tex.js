@@ -22,7 +22,7 @@
       .replace(/\$([^$]+?)\$/g, (_, m) => render(m, false));
   };
   /* ajudas para escrever números e matrizes em TeX */
-  const n = (x, d = 2) => CM.fmtC(x, d).replace('−', '-');
+  const n = (x, d = 2) => CM.fmtC(x, d).replace('−', '-').replace(',', '{,}');
   window.TX = {
     n,
     v: (v, d) => '(' + v.map((x) => n(x, d)).join(';\\,') + ')',
@@ -68,4 +68,5 @@
     try { return katex.renderToString(conv(s), { throwOnError: false, strict: 'ignore' }); } catch (e) { return s; }
   };
   window.uniTex = conv;
+  window.ehFormula = (s) => !PAL.test(String(s));
 })();

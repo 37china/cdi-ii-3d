@@ -112,7 +112,7 @@
     const hx = (x1 - x0) / nx, hy = (y1 - y0) / ny;
     const V = [];
     for (let i = 0; i <= nx; i++) { V.push([]); for (let j = 0; j <= ny; j++) V[i].push(f(x0 + i * hx, y0 + j * hy) - c); }
-    const it = (pa, pb, va, vb) => { const t = va / (va - vb); return [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]; };
+    const it = (pa, pb, va, vb) => { if (va > vb) { [pa, pb, va, vb] = [pb, pa, vb, va]; } const t = va / (va - vb); return [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]; };
     for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
       const p = [[x0 + i * hx, y0 + j * hy], [x0 + (i + 1) * hx, y0 + j * hy], [x0 + (i + 1) * hx, y0 + (j + 1) * hy], [x0 + i * hx, y0 + (j + 1) * hy]];
       const v = [V[i][j], V[i + 1][j], V[i + 1][j + 1], V[i][j + 1]];
@@ -128,17 +128,86 @@
     return segs;
   };
 
-  /* ---------- formatação (ponto decimal, como nas teóricas) ---------- */
+
+  /* ---------- ferramentas para funções escritas pelo aluno ---------- */
+  /* gradiente em ℝⁿ */
+  CM.gradN = (f, p, h = 1e-5) => p.map((_, i) => { const a = p.slice(), b = p.slice(); a[i] += h; b[i] -= h; return (f(...a) - f(...b)) / (2 * h); });
+  /* jacobiana de F: ℝⁿ → ℝᵐ (F devolve um vetor) */
+  CM.jacN = (F, p, h = 1e-6) => {
+    const cols = p.map((_, i) => { const a = p.slice(), b = p.slice(); a[i] += h; b[i] -= h; const A = F(...a), B = F(...b); return A.map((x, k) => (x - B[k]) / (2 * h)); });
+    return cols[0].map((_, r) => cols.map((c) => c[r]));
+  };
+  /* junta segmentos [[p, q], …] em linhas poligonais contínuas */
+  CM.cadeias = (segs, tol = 1e-6) => {
+    const k = (p) => Math.round(p[0] / tol) + ',' + Math.round(p[1] / tol);
+    const mapa = new Map();
+    segs.forEach((s, i) => { for (const e of [0, 1]) { const c = k(s[e]); if (!mapa.has(c)) mapa.set(c, []); mapa.get(c).push([i, e]); } });
+    const usado = new Uint8Array(segs.length), out = [];
+    const seguir = (lin, p) => {
+      for (;;) {
+        const viz = (mapa.get(k(p)) || []).find(([i]) => !usado[i]);
+        if (!viz) return;
+        const [i, e] = viz; usado[i] = 1;
+        p = segs[i][1 - e]; lin.push(p);
+      }
+    };
+    segs.forEach((s, i) => {
+      if (usado[i]) return;
+      usado[i] = 1;
+      const lin = [s[0], s[1]];
+      seguir(lin, s[1]);
+      const tras = [s[0]]; seguir(tras, s[0]);
+      out.push(tras.slice(1).reverse().concat(lin));
+    });
+    return out.sort((a, b) => b.length - a.length);
+  };
+  /* pontos críticos de f(x, y) numa caixa: grelha + Newton no gradiente */
+  CM.criticos = (f, x0, x1, y0, y1, n = 14) => {
+    const out = [];
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      let p = [x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * j) / n];
+      for (let it = 0; it < 40; it++) {
+        const g = CM.grad(f, p[0], p[1]), H = CM.hess(f, p[0], p[1]);
+        const M = [[H[0][0], H[0][1]], [H[1][0], H[1][1]]], d = CM.det2(M);
+        if (!isFinite(g[0]) || !isFinite(d)) break;
+        let q;
+        if (Math.abs(d) > 1e-10) { const I = CM.inv2(M); q = CM.sub(p, CM.mxv(I, g)); }
+        else q = CM.sub(p, CM.mul(g, 0.1));
+        if (CM.len(CM.sub(q, p)) < 1e-11) { p = q; break; }
+        p = q;
+        if (Math.abs(p[0]) > 1e3 || Math.abs(p[1]) > 1e3) break;
+      }
+      const g = CM.grad(f, p[0], p[1]);
+      if (!isFinite(g[0]) || Math.hypot(...g) > 1e-6) continue;
+      if (p[0] < x0 - 1e-9 || p[0] > x1 + 1e-9 || p[1] < y0 - 1e-9 || p[1] > y1 + 1e-9) continue;
+      const lim = (v) => (Math.abs(v - Math.round(v)) < 1e-6 ? Math.round(v) : v);
+      p = [lim(p[0]), lim(p[1])];
+      if (!out.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-4)) out.push(p);
+    }
+    return out;
+  };
+  /* classificação pela hessiana (2 variáveis) */
+  CM.classificar = (f, p) => {
+    const H = CM.hess(f, p[0], p[1]);
+    const e = CM.eigSim2(H[0][0], (H[0][1] + H[1][0]) / 2, H[1][1]);
+    const tol = 1e-4 * Math.max(1, Math.abs(e.l1), Math.abs(e.l2));
+    const t = Math.abs(e.l2) < tol || Math.abs(e.l1) < tol ? 'inconclusivo' : e.l2 > 0 ? 'mínimo' : e.l1 < 0 ? 'máximo' : 'sela';
+    return { H, e, tipo: t };
+  };
+  /* gerador de números aleatórios inteiros num intervalo, sem zero se pedido */
+  CM.aleat = (a, b, semZero) => { let v; do v = a + Math.floor(Math.random() * (b - a + 1)); while (semZero && v === 0); return v; };
+
+  /* ---------- formatação (vírgula decimal; as coordenadas separam-se com ;) ---------- */
   CM.fmt = (x, d = 2) => {
     if (x === null || x === undefined || Number.isNaN(x)) return '—';
     if (!isFinite(x)) return x > 0 ? '∞' : '−∞';
     if (Math.abs(x) < 0.5 * Math.pow(10, -d)) x = 0;
-    return x.toFixed(d).replace('-', '−');
+    return x.toFixed(d).replace('-', '−').replace('.', ',');
   };
   CM.fmtC = (x, d = 3) => { // compacto: sem zeros à direita
     if (x === null || x === undefined || Number.isNaN(x)) return '—';
     if (Math.abs(x) < 0.5 * Math.pow(10, -d)) return '0';
-    return String(+x.toFixed(d)).replace('-', '−');
+    return String(+x.toFixed(d)).replace('-', '−').replace('.', ',');
   };
   CM.pt = (v, d = 2) => '(' + v.map((x) => CM.fmt(x, d)).join('; ') + ')';
   CM.ptC = (v, d = 3) => '(' + v.map((x) => CM.fmtC(x, d)).join('; ') + ')';

@@ -19,6 +19,7 @@
       .replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/≠/g, '!=').replace(/√/g, ' sqrt ').replace(/\*\*/g, '^').replace(/\bϑ/g, 'θ').replace(/ϕ/g, 'φ');
     const out = [];
     let i = 0;
+    const temCmp = /[<>=!]/.test(s);
     const isL = (c) => /[A-Za-zÀ-ÿθφρλπ_]/.test(c);
     while (i < s.length) {
       const c = s[i];
@@ -30,6 +31,8 @@
       }
       if (isL(c)) {
         let j = i; while (j < s.length && (isL(s[j]) || /[0-9]/.test(s[j]))) j++;
+        /* «e» isolado numa condição é a conjunção (x ≥ 0 e y ≥ 0), não o número de Euler */
+        if (s.slice(i, j) === 'e' && temCmp && /\s/.test(s[i - 1] || '') && /\s/.test(s[j] || '') && !vars.includes('e')) { out.push({ k: 'e' }); i = j; continue; }
         out.push(...palavra(s.slice(i, j), vars)); i = j; continue;
       }
       const dois = s.slice(i, i + 2);
@@ -220,10 +223,10 @@
       case 'sub': s = tex(n.a, 3) + '-' + tex(n.b, 3.5); break;
       case 'neg': s = '-' + tex(n.a, 4.5); break;
       case 'mul': {
-        const A = tex(n.a, 4), B = tex(n.b, 4.01);
+        const A = n.a.t === 'neg' ? par(tex(n.a)) : tex(n.a, 4), B = n.b.t === 'neg' ? par(tex(n.b)) : tex(n.b, 4);
         const pontos = /[0-9}]$/.test(A) && /^[0-9]/.test(B) || (n.b.t === 'num');
-        s = A + (pontos ? '\\cdot ' : n.b.t === 'fn' || n.a.t === 'fn' ? '\\,' : '') + B;
-        if (n.b.t === 'num' && n.a.t !== 'num') s = tex(n.b, 4) + tex(n.a, 4.01);
+        s = A + (pontos ? '\\cdot ' : n.b.t === 'fn' || n.a.t === 'fn' || /\\[a-zA-Z]+$/.test(A) ? '\\,' : '') + B;
+        if (n.b.t === 'num' && n.a.t !== 'num') s = tex(n.b, 4) + tex(n.a, 4);
         break;
       }
       case 'div': s = '\\frac{' + tex(n.a) + '}{' + tex(n.b) + '}'; break;
@@ -245,9 +248,10 @@
       case 'tup': s = '(' + n.it.map((x) => tex(x)).join(';\\,') + ')'; break;
       default: s = '?';
     }
-    return pr < pai ? '\\left(' + s + '\\right)' : s;
+    return pr < pai ? par(s) : s;
   }
-  const argTex = (a) => (['var', 'num', 'const'].includes(a.t) || (a.t === 'mul' && a.imp && simples(a)) ? '\\,' + tex(a, 4.01) : '\\left(' + tex(a) + '\\right)');
+  const par = (t) => (/\\frac|\\sum|\\int/.test(t) ? '\\left(' + t + '\\right)' : '(' + t + ')');
+const argTex = (a) => (['var', 'num', 'const'].includes(a.t) || (a.t === 'mul' && a.imp && simples(a)) ? ' ' + tex(a, 4) : par(tex(a)));
   const simples = (a) => a.t !== 'mul' ? ['var', 'num', 'const'].includes(a.t) : simples(a.a) && simples(a.b);
 
   /* ---------- simplificação leve ---------- */
@@ -359,7 +363,10 @@
       else resto.push(p);
     });
     const g = { s: Math.sign(k), n: Math.abs(k) === 1 ? novo : mul(N(Math.abs(k)), novo) };
-    return montar([g].concat(resto));
+    const pos = ps.findIndex((p, i) => qs[i] && nomes.includes(qs[i].v));
+    const antes = ps.slice(0, pos).filter((p, i) => !(qs[i] && nomes.includes(qs[i].v))).length;
+    resto.splice(antes, 0, g);
+    return montar(resto);
   }
   function substituir(n, mapa) {
     if (!n || typeof n !== 'object' || !n.t) return n;
@@ -401,7 +408,7 @@
     const n = ast.t === 'tup' ? ast.it.length : 1;
     if (o.componentes && n !== o.componentes) throw new Erro(o.componentes === 1 ? 'Aqui é uma só expressão.' : `Precisa de ${o.componentes} componentes, separadas por ; (ex.: (x+y; x−y)).`);
     const f = compilar(ast, vars);
-    return { ast, f, tex: tex(ast), n, src };
+    return { ast, f, tex: tex(ast), n, src, usa: vars.filter((v) => temVar(ast, v)) };
   }
   /* função por ramos: ramos = [{expr, cond}], resto = expr do «caso contrário» */
   function ramos(lista, resto, vars, o = {}) {
@@ -410,7 +417,8 @@
     const f = (...a) => { for (const r of R) if (r.c.f(...a)) return r.e.f(...a); return Z ? Z.f(...a) : NaN; };
     const linhas = R.map((r) => r.e.tex + ', & ' + r.c.tex);
     if (Z) linhas.push(Z.tex + ', & \\text{caso contrário}');
-    return { f, tex: R.length ? '\\begin{cases}' + linhas.join('\\\\') + '\\end{cases}' : Z.tex, R, Z, ast: R.length ? null : Z.ast };
+    const usa = vars.filter((v) => R.some((r) => r.e.usa.includes(v) || r.c.usa.includes(v)) || (Z && Z.usa.includes(v)));
+    return { f, tex: R.length ? '\\begin{cases}' + linhas.join('\\\\') + '\\end{cases}' : Z.tex, R, Z, ast: R.length ? null : Z.ast, usa, n: Z ? Z.n : R[0].e.n };
   }
 
   const API = { ler, ramos, analisar, compilar, tex, converter, simp, Erro, SIST };

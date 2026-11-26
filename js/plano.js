@@ -7,10 +7,12 @@
       this.opts = Object.assign({ janela: [-2, 2, -2, 2], dica: 'Arrasta os pontos · arrasta o fundo para mover · pinça para zoom', grelha: true }, opts);
       this.el = document.createElement('div');
       this.el.className = 'vista plano';
-      this.el.innerHTML = '<canvas></canvas><div class="vdica"></div><div class="vbtns"><button type="button" data-z="1" aria-label="Aproximar">+</button><button type="button" data-z="-1" aria-label="Afastar">−</button><button type="button" data-r aria-label="Repor a vista">↺</button></div>';
+      this.el.innerHTML = '<canvas></canvas><div class="rot2"></div><div class="vdica"></div><div class="vbtns"><button type="button" data-z="1" aria-label="Aproximar">+</button><button type="button" data-z="-1" aria-label="Afastar">−</button><button type="button" data-r aria-label="Repor a vista">↺</button></div>';
       this.el.querySelector('.vdica').textContent = this.opts.dica;
       host.appendChild(this.el);
       this.cv = this.el.querySelector('canvas');
+      this.rot = this.el.querySelector('.rot2');
+      this.pool = [];
       this.ctx = this.cv.getContext('2d');
       this.cena = null;
       this.alcas = [];
@@ -136,12 +138,9 @@
           for (let x = Math.ceil(x0 / passo) * passo; x <= x1; x += passo) { if (Math.abs(x) < 1e-9) continue; const a = P.px(x, 0)[0]; ctx.fillText(CM.fmtC(x, 2), a, lx); }
           ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
           for (let y = Math.ceil(y0 / passoY) * passoY; y <= y1; y += passoY) { if (Math.abs(y) < 1e-9) continue; const b = P.px(0, y)[1]; ctx.fillText(CM.fmtC(y, 2), ly, b); }
-          ctx.font = 'italic 500 16px "Latin Modern Math", "Cambria Math", Georgia, serif';
-          ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-          ctx.fillText(nomes[0], P.W - 8, Math.min(Math.max(o[1] - 4, 18), P.H - 4));
-          ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-          ctx.fillText(nomes[1], Math.min(Math.max(o[0] + 6, 4), P.W - 20), 6);
           ctx.restore();
+          if (nomes[0]) P._rotulo(nomes[0], P.W - 10, Math.min(Math.max(o[1] - 13, 14), P.H - 14), { cor: eixo, al: 'right' });
+          if (nomes[1]) P._rotulo(nomes[1], Math.min(Math.max(o[0] + 8, 6), P.W - 30), 14, { cor: eixo, al: 'left' });
         },
         /* pinta os pontos onde dentro(x, y) é verdadeiro */
         regiao(dentro, cor, alfa = 0.28, res = 2) {
@@ -259,8 +258,9 @@
         },
         poli(pts, o = {}) { A.curva(pts, Object.assign({ fechar: true }, o)); },
         texto(p, txt, o = {}) {
-          if (typeof txt === 'string' && txt.length > 2 && txt[0] === '$' && txt.endsWith('$')) { txt = txt.slice(1, -1); o = Object.assign({ it: 1 }, o); }
           const q = P.px(p[0], p[1]);
+          /* fórmulas (com $ ou sem palavras) vão para a camada KaTeX; texto corrido fica no canvas */
+          if (typeof txt === 'string' && (txt.includes('$') || window.ehFormula && ehFormula(txt))) { P._rotulo(txt, q[0] + (o.dx || 0), q[1] + (o.dy || 0), o); return; }
           ctx.save();
           ctx.font = (o.it ? 'italic ' : '') + (o.it ? 500 : o.peso || 600) + ' ' + (o.tam || (o.it ? 16 : 14)) + 'px ' + (o.it ? 'Georgia, serif' : 'IBM Plex Sans, system-ui, sans-serif');
           ctx.textAlign = o.al || 'center'; ctx.textBaseline = 'middle';
@@ -276,12 +276,26 @@
       return A;
     }
 
+    /* rótulo em KaTeX por cima do canvas (reaproveita os elementos entre desenhos) */
+    _rotulo(txt, x, y, o = {}) {
+      let d = this.pool[this.nrot];
+      if (!d) { d = document.createElement('span'); d.className = 'r2'; this.rot.appendChild(d); this.pool.push(d); }
+      this.nrot++;
+      const h = txt.includes('$') ? tex(txt) : window.autoTex ? autoTex(txt) : txt;
+      if (d._h !== h) { d.innerHTML = h; d._h = h; }
+      d.hidden = false;
+      d.style.color = o.cor || '';
+      d.style.fontSize = o.tam ? o.tam + 'px' : '';
+      const ax = o.al === 'left' ? '0' : o.al === 'right' ? '-100%' : '-50%';
+      d.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(${ax}, -50%)`;
+    }
     desenhar() {
       if (!this.W) return;
       this.ctx.clearRect(0, 0, this.W, this.H);
       this.alcas = [];
-      if (!this.cena) return;
-      try { this.cena(this._api()); } catch (e) { console.error(e); }
+      this.nrot = 0;
+      if (this.cena) { try { this.cena(this._api()); } catch (e) { console.error(e); } }
+      for (let i = this.nrot; i < this.pool.length; i++) this.pool[i].hidden = true;
     }
   }
   window.Plano = Plano;

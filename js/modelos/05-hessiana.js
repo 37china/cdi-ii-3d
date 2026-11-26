@@ -18,7 +18,7 @@
     return 'inconclusivo';
   }
 
-  CDI.materia({
+  CDI.modelosDe('hessiana', {
     id: 'hessiana', ordem: 5, grupo: 'Cálculo diferencial', curto: 'Hessiana e extremos', titulo: 'Hessiana e extremos livres', paginas: 'pp. 24–27',
     resumo: 'Pontos críticos, a matriz $Hf$, valores próprios e a classificação: mínimo, máximo, sela ou inconclusivo.',
     modelos: [
@@ -28,20 +28,30 @@
           const cor = M.cores();
           const V = M.vista3d({ ext: 1.6, alvo: [0, 0, 0], yaw: 0.75, pitch: 0.45 });
           const G = M.plano({ janela: [-0.15, 3.3, -4.6, 4.6], livre: true, dica: 'curvatura vᵀHf(P)v nas direções v = (cos θ; sen θ)' });
-          M.escolha('f', { rot: 'Função', opcoes: Object.keys(FN).map((k) => [k, '$' + FN[k].tex + '$']), valor: 'sela', aoMudar: (k) => { M.S.x0 = FN[k].cr[0][0]; M.S.y0 = FN[k].cr[0][1]; } });
+          const SRC = { min: 'x^2+y^2', max: '1-x^2-y^2', sela: 'x^2-y^2', xy4: 'x^2+y^4', xmy4: 'x^2-y^4', dois: 'x^3-3x+y^2', macaco: 'x^3-3xy^2' };
+          M.funcao('f', { vars: ['x', 'y'], valor: 'x^2-y^2', exemplos: Object.keys(FN).map((k) => ['$' + FN[k].tex + '$', SRC[k], { x0: FN[k].cr[0][0], y0: FN[k].cr[0][1] }]) });
+          let cache = null;
+          const info = (S) => {
+            const ch = JSON.stringify(S.f);
+            if (!cache || cache.ch !== ch) {
+              const f = M.F.f.f, fx = CDI.faixaZ(f, -1.15, 1.15, -1.15, 1.15);
+              cache = { ch, f, z: fx, esc: CDI.escalaZ(fx, 1.5), cr: CM.criticos(f, -1.1, 1.1, -1.1, 1.1) };
+            }
+            return cache;
+          };
           M.barra('x0', { rot: '$x_0$', cor: cor.u, min: -1.1, max: 1.1, valor: 0, nome: 'x₀' });
           M.barra('y0', { rot: '$y_0$', cor: cor.v, min: -1.1, max: 1.1, valor: 0, nome: 'y₀' });
           M.caixa('dir', { rot: 'Direções próprias', valor: true });
           M.caixa('taylor', { rot: 'Aproximação de 2.ª ordem', valor: false });
-          M.botoes([['Ir para um ponto crítico', () => { const c = FN[M.S.f].cr; const i = c.findIndex((p) => Math.hypot(p[0] - M.S.x0, p[1] - M.S.y0) < 1e-6); const q = c[(i + 1) % c.length]; M.definir({ x0: q[0], y0: q[1] }); }]]);
+          M.botoes([['Ir para um ponto crítico', () => { const c = info(M.S).cr; if (!c.length) return; const i = c.findIndex((p) => Math.hypot(p[0] - M.S.x0, p[1] - M.S.y0) < 1e-6); const q = c[(i + 1) % c.length]; M.definir({ x0: q[0], y0: q[1] }); }]]);
           const est = (S) => {
-            const fn = FN[S.f], f = fn.f, a = [S.x0, S.y0], gr = CM.grad(f, ...a), h = H(f, ...a), e = CM.eigSim2(h[0][0], h[0][1], h[1][1]);
+            const fn = info(S), f = fn.f, a = [S.x0, S.y0], gr = CM.grad(f, ...a), h = H(f, ...a), e = CM.eigSim2(h[0][0], h[0][1], h[1][1]);
             return { fn, f, a, gr, h, e, crit: Math.hypot(...gr) < 1e-4 };
           };
           M.cena(V, (C, S) => {
             const { fn, f, a, h, e, crit } = est(S);
             const k = fn.esc || 1, g = (x, y) => f(x, y) * k;
-            C.eixos({ x: [-1.45, 1.45], y: [-1.45, 1.45], z: [-1.5, 1.7] });
+            C.eixos({ x: [-1.45, 1.45], y: [-1.45, 1.45], z: [-1.5, 1.7], esc: [1, 1, k] });
             C.sup((r, t) => { const x = r * Math.cos(t), y = r * Math.sin(t), z = g(x, y); return z < fn.z[0] * k || z > fn.z[1] * k ? null : [x, y, z]; }, 0, 1.15, 0, 2 * Math.PI, 28, 72, { alfa: S.taylor ? 0.5 : 0.94 });
             const P = [a[0], a[1], g(...a)];
             if (S.taylor) {
@@ -88,20 +98,28 @@
         montar(M) {
           const cor = M.cores();
           const V = M.vista3d({ ext: 1.5 });
-          const f = (x, y) => x * x * y ** 3;
+          M.funcao('f', { vars: ['x', 'y'], valor: 'x^2y^3', exemplos: [['$x^2y^3$', 'x^2y^3'], ['$e^{xy}$', 'e^(xy)'], ['$\\operatorname{sen}(x)\\cos(y)$', 'sen(x)cos(y)'], ['$\\frac{xy(x^2-y^2)}{x^2+y^2}$', { r: [['xy(x^2-y^2)/(x^2+y^2)', '(x;y)≠(0;0)']], z: '0' }, { x0: 0, y0: 0 }]] });
           M.barra('x0', { rot: '$x_0$', cor: cor.u, min: -1, max: 1, valor: 0.7, nome: 'x₀' });
           M.barra('y0', { rot: '$y_0$', cor: cor.v, min: -1, max: 1, valor: 0.8, nome: 'y₀' });
+          /* derivadas por diferenças finitas, cada uma com o seu passo */
+          const dx = (g, h = 1e-4) => (x, y) => (g(x + h, y) - g(x - h, y)) / (2 * h);
+          const dy = (g, h = 1e-4) => (x, y) => (g(x, y + h) - g(x, y - h)) / (2 * h);
           M.cena(V, (C, S) => {
-            C.eixos({ x: [-1.35, 1.35], y: [-1.35, 1.35], z: [-1.2, 1.3] });
-            C.grafico(f, -1, 1, -1, 1, 36, { alfa: 0.92 });
+            const f = M.F.f.f, fx = CDI.faixaZ(f, -1, 1, -1, 1), k = CDI.escalaZ(fx, 1.2), g = (x, y) => k * f(x, y);
+            C.eixos({ x: [-1.35, 1.35], y: [-1.35, 1.35], z: [-1.2, 1.3], esc: [1, 1, k] });
+            CDI.grafico(C, f, { k, faixa: fx, caixa: [-1, 1, -1, 1], n: 36, alfa: 0.92 });
             const a = [S.x0, S.y0];
-            C.param((t) => [t, a[1], f(t, a[1]) + 0.004], -1, 1, 60, { cor: cor.u, larg: 3.5 });
-            C.param((t) => [a[0], t, f(a[0], t) + 0.004], -1, 1, 60, { cor: cor.v, larg: 3.5 });
-            C.ponto([a[0], a[1], f(...a)], { cor: cor.i, rot: '$P$', arr: (x, y) => M.definir({ x0: CM.clamp(x, -1, 1), y0: CM.clamp(y, -1, 1) }) });
+            C.param((t) => [t, a[1], g(t, a[1]) + 0.004], -1, 1, 60, { cor: cor.u, larg: 3.5 });
+            C.param((t) => [a[0], t, g(a[0], t) + 0.004], -1, 1, 60, { cor: cor.v, larg: 3.5 });
+            C.ponto([a[0], a[1], g(...a)], { cor: cor.i, rot: '$P$', arr: (x, y) => M.definir({ x0: CM.clamp(x, -1, 1), y0: CM.clamp(y, -1, 1) }) });
           });
-          M.leituras('$f(x,y)=x^2y^3$', (S) => {
-            const x = S.x0, y = S.y0;
-            return [['$\\partial f/\\partial x=2xy^3$', '$' + TX.n(2 * x * y ** 3, 3) + '$'], ['$\\partial f/\\partial y=3x^2y^2$', '$' + TX.n(3 * x * x * y * y, 3) + '$'], '—', ['$\\dfrac{\\partial^2 f}{\\partial y\\,\\partial x}=\\dfrac{\\partial}{\\partial y}(2xy^3)=6xy^2$', '$' + TX.n(6 * x * y * y, 3) + '$', 'forte'], ['$\\dfrac{\\partial^2 f}{\\partial x\\,\\partial y}=\\dfrac{\\partial}{\\partial x}(3x^2y^2)=6xy^2$', '$' + TX.n(6 * x * y * y, 3) + '$', 'forte'], ['$Hf(P)$', '$' + TX.m([[2 * y ** 3, 6 * x * y * y], [6 * x * y * y, 6 * x * x * y]], 3) + '$'], 'As derivadas cruzadas coincidem (teorema de Schwarz), por isso a Hessiana é simétrica.'];
+          M.leituras('Em $P$', (S) => {
+            const f = M.F.f.f, x = S.x0, y = S.y0;
+            const fxv = dx(f)(x, y), fyv = dy(f)(x, y);
+            const fxy = dy(dx(f, 1e-4), 1e-3)(x, y), fyx = dx(dy(f, 1e-4), 1e-3)(x, y);
+            const fxx = dx(dx(f, 1e-4), 1e-3)(x, y), fyy = dy(dy(f, 1e-4), 1e-3)(x, y);
+            const igual = Math.abs(fxy - fyx) < 1e-3 * Math.max(1, Math.abs(fxy));
+            return [['$\\frac{\\partial f}{\\partial x}(P)$', '$' + TX.n(fxv, 3) + '$'], ['$\\frac{\\partial f}{\\partial y}(P)$', '$' + TX.n(fyv, 3) + '$'], '—', ['$\\dfrac{\\partial^2 f}{\\partial y\\,\\partial x}(P)=\\dfrac{\\partial}{\\partial y}\\Big(\\dfrac{\\partial f}{\\partial x}\\Big)$', '$' + TX.n(fxy, 3) + '$', 'forte'], ['$\\dfrac{\\partial^2 f}{\\partial x\\,\\partial y}(P)=\\dfrac{\\partial}{\\partial x}\\Big(\\dfrac{\\partial f}{\\partial y}\\Big)$', '$' + TX.n(fyx, 3) + '$', igual ? 'forte' : 'mau'], ['$Hf(P)$', '$' + TX.m([[fxx, fxy], [fyx, fyy]], 3) + '$'], igual ? 'As derivadas cruzadas coincidem neste ponto.' : '<b>As derivadas cruzadas são diferentes!</b> Então $f$ não é de classe $C^2$ perto deste ponto: o teorema de Schwarz não se aplica.'];
           });
           M.texto('<b class="t">Classe Cᵏ e teorema de Schwarz</b><p>$f$ é de classe $C^1$ se $f$ e as derivadas parciais são contínuas, e $C^k$ se as derivadas até à ordem $k$ o são.</p><p>Se $f$ é $C^2$, então $\\dfrac{\\partial^2 f}{\\partial x\\,\\partial y}=\\dfrac{\\partial^2 f}{\\partial y\\,\\partial x}$. A Hessiana é simétrica: tem valores próprios reais e vetores próprios ortogonais.</p>', 'nota');
           M.legenda([[cor.u, 'corte $y=y_0$: derivar em $x$'], [cor.v, 'corte $x=x_0$: derivar em $y$']]);

@@ -45,6 +45,27 @@
     soma: { tex: 'x+y+1', f: (x, y) => x + y + 1 },
     sela: { tex: '1+xy', f: (x, y) => 1 + x * y },
   };
+
+  /* região do tipo I escrita pelo aluno: a ≤ x ≤ b, c(x) ≤ y ≤ d(x) */
+  const PRE_R = { aula: ['-1', '1', 'x^2', 'sqrt(2-x^2)'], quad: ['0', '1', '0', '1'], tri: ['0', '1', '0', 'x'], entre: ['0', '1', 'x^2', 'x'], disco: ['-1', '1', '-sqrt(1-x^2)', 'sqrt(1-x^2)'] };
+  const PRE_F = { um: '1', par: '2-x^2-y^2', soma: 'x+y+1', sela: '1+xy' };
+  function regiaoLivre(M, extra) {
+    const w = M.funcao('rc', { rot: 'Região $D$: $c(x)\\le y\\le d(x)$, com $c(x)=$', vars: ['x'], valor: 'x^2', exemplos: Object.keys(PRE_R).map((k) => [RG[k].nome, PRE_R[k][2], Object.assign({ ra: PRE_R[k][0], rb: PRE_R[k][1], rd: PRE_R[k][3] }, extra || {})]) });
+    M.S.ra = '-1'; M.S.rb = '1';
+    CDI.intervalo(M, w, 'ra', 'rb', '$x$ entre');
+    M.funcao('rd', { rot: '$d(x)=$', vars: ['x'], valor: 'sqrt(2-x^2)' });
+    return (S) => {
+      const k = Object.keys(PRE_R).find((q) => CDI.igual(PRE_R[q], [S.ra, S.rb, S.rc, S.rd]));
+      if (k) return RG[k];
+      const a = CDI.valorConst(S.ra), b = CDI.valorConst(S.rb), c = M.F.rc.f, d = M.F.rd.f;
+      const tx = (v) => { try { return EX.ler(String(v), []).tex; } catch (e) { return String(v); } };
+      return {
+        x: [a, b], c, d, dentro: (x, y) => x >= a && x <= b && y >= c(x) && y <= d(x),
+        bordas: [{ g: (t) => [t, c(t)], t: [a, b] }, { g: (t) => [t, d(t)], t: [a, b] }, { g: (t) => [a, c(a) + t * (d(a) - c(a))], t: [0, 1] }, { g: (t) => [b, c(b) + t * (d(b) - c(b))], t: [0, 1] }],
+        lim1: `\\int_{${tx(S.ra)}}^{${tx(S.rb)}}\\int_{${M.F.rc.tex}}^{${M.F.rd.tex}} dy\\,dx`, exTxt: null,
+      };
+    };
+  }
   const volume = (R, f) => CM.duplo(f, R.x[0], R.x[1], R.c, R.d, 200);
 
   /* sólidos para os cortes em z */
@@ -92,7 +113,7 @@
     },
   };
 
-  CDI.materia({
+  CDI.modelosDe('integrais', {
     id: 'integrais', ordem: 8, grupo: 'Cálculo integral', curto: 'Integrais múltiplos', titulo: 'Integrais duplos e triplos', paginas: 'pp. 35–41',
     resumo: 'Volume debaixo de um gráfico, cortes, trocar a ordem, somas de Riemann e as $3!$ ordens.',
     modelos: [
@@ -102,16 +123,16 @@
           const cor = M.cores();
           const V = M.vista3d({ ext: 1.7, alvo: [0, 0.4, 0.55], yaw: -0.95, pitch: 0.42 });
           const G = M.plano({ janela: [-1.3, 1.3, -0.2, 3.4], livre: true, dica: 'Área do corte A(x) = ∫ f(x, y) dy: o volume é a área debaixo desta curva' });
-          M.escolha('r', { rot: 'Região D', opcoes: Object.keys(RG).map((k) => [k, RG[k].nome]), valor: 'aula', aoMudar: (k) => (M.S.u = 0.45) });
-          M.escolha('f', { rot: 'Função f', opcoes: Object.keys(FS).map((k) => [k, '$f=' + FS[k].tex + '$']), valor: 'par' });
+          M.funcao('f', { vars: ['x', 'y'], valor: '2-x^2-y^2', exemplos: Object.keys(PRE_F).map((k) => ['$' + FS[k].tex + '$', PRE_F[k]]) });
+          const regiao = regiaoLivre(M, { u: 0.45 });
           M.barra('u', { rot: '$x$', cor: cor.u, min: 0, max: 1, valor: 0.45, nome: 'posição do corte', dur: 6000, fmt: (t) => '' });
           M.caixa('fatia', { rot: 'Corte com $x$ fixo', valor: true });
           M.caixa('riem', { rot: 'Prismas da soma de Riemann', valor: false });
           M.barra('n', { rot: '$n$', cor: cor.n, min: 2, max: 40, passo: 1, valor: 8, fmt: (x) => String(Math.round(x)), nome: 'divisões da grelha' });
-          const xc = (S) => { const R = RG[S.r]; return R.x[0] + (R.x[1] - R.x[0]) * S.u; };
+          const xc = (S) => { const R = regiao(S); return R.x[0] + (R.x[1] - R.x[0]) * S.u; };
           const Acorte = (R, f, x) => CM.simpson((y) => f(x, y), R.c(x), R.d(x), 120);
           M.cena(V, (C, S) => {
-            const R = RG[S.r], f = FS[S.f].f;
+            const R = regiao(S), f = M.F.f.f;
             C.eixos({ x: [-1.6, 1.6], y: [-0.6, 1.8], z: [-0.2, 2.5] });
             // região no chão
             C.sup((x, t) => [x, R.c(x) + t * (R.d(x) - R.c(x)), 0.002], R.x[0], R.x[1], 0, 1, 40, 4, { cor: cor.a, alfa: 0.35, malha: false, plano: 1 });
@@ -138,7 +159,7 @@
             }
           });
           M.cena(G, (P, S) => {
-            const R = RG[S.r], f = FS[S.f].f;
+            const R = regiao(S), f = M.F.f.f;
             const xs = []; let amax = 0.5;
             for (let i = 0; i <= 160; i++) { const x = R.x[0] + ((R.x[1] - R.x[0]) * i) / 160, a = Acorte(R, f, x); xs.push([x, a]); amax = Math.max(amax, a); }
             G.j0 = [R.x[0] - 0.15 * (R.x[1] - R.x[0]), R.x[1] + 0.1 * (R.x[1] - R.x[0]), -0.15 * amax, amax * 1.25];
@@ -150,9 +171,9 @@
             P.ponto([x, Acorte(R, f, x)], { cor: cor.u });
           });
           M.leituras('Volume', (S) => {
-            const R = RG[S.r], fs = FS[S.f], f = fs.f, x = xc(S);
+            const R = regiao(S), fs = { tex: M.F.f.tex }, f = M.F.f.f, x = xc(S);
             const vol = volume(R, f);
-            const r = [['$x$ do corte', '$' + TX.n(x, 3) + '$'], ['$A(x)=\\int_{c(x)}^{d(x)} f(x,y)\\,dy$', '$' + TX.n(Acorte(R, f, x), 4) + '$'], ['$\\int_{a}^{x}A(t)\\,dt$ (já varrido)', '$' + TX.n(CM.simpson((t) => Acorte(R, f, t), R.x[0], x, 120), 4) + '$'], '—', ['$\\iint_D f$', '$' + R.lim1.replace(' dy', ' (' + fs.tex + ')\\,dy') + '$'], ['valor', '$' + (S.f === 'um' ? R.exTxt + '\\approx ' : '') + TX.n(vol, 4) + '$', 'forte']];
+            const r = [['$x$ do corte', '$' + TX.n(x, 3) + '$'], ['$A(x)=\\int_{c(x)}^{d(x)} f(x,y)\\,dy$', '$' + TX.n(Acorte(R, f, x), 4) + '$'], ['$\\int_{a}^{x}A(t)\\,dt$ (já varrido)', '$' + TX.n(CM.simpson((t) => Acorte(R, f, t), R.x[0], x, 120), 4) + '$'], '—', ['$\\iint_D f$', '$' + R.lim1.replace(' dy', ' (' + fs.tex + ')\\,dy') + '$'], ['valor', '$' + (S.f === '1' && R.exTxt ? R.exTxt + '\\approx ' : '') + TX.n(vol, 4) + '$', 'forte']];
             if (S.riem) {
               const n = Math.round(S.n), [x0, x1] = R.x, ys = [];
               for (let i = 0; i <= 8; i++) { const xx = x0 + ((x1 - x0) * i) / 8; ys.push(R.c(xx), R.d(xx)); }

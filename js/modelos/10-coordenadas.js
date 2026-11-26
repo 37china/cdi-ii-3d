@@ -65,7 +65,7 @@
     return (cacheNum[k] = (c / n ** 3) * (x1 - x0) * (y1 - y0) * (z1 - z0));
   }
 
-  CDI.materia({
+  CDI.modelosDe('coordenadas', {
     id: 'coordenadas', ordem: 10, grupo: 'Cálculo integral', curto: 'Coordenadas cil. e esf.', titulo: 'Coordenadas cilíndricas e esféricas', paginas: 'pp. 45–49',
     resumo: 'O ponto $P$ em $(\\rho;\\theta;z)$ e $(r;\\theta;\\varphi)$, a caixinha de volume e os sólidos das teóricas.',
     modelos: [

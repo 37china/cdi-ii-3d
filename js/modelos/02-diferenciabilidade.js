@@ -1,14 +1,20 @@
 /* 2. Diferenciabilidade: plano tangente, o(h), derivadas parciais e direcionais, Jacobiana. */
 (function () {
   const r2 = (x, y) => x * x + y * y;
+  const R0 = (e) => ({ r: [[e, '(x;y)≠(0;0)']], z: '0' });
+  /* exemplos das aulas (o aluno pode escrever qualquer outra função) */
   const F = {
-    quad: { tex: 'x^2+y^2', f: (x, y) => x * x + y * y, txt: 'f(x;y)=x^2+y^2', a: [0.5, 0.3], z: [-0.2, 2.2] },
-    sela: { tex: 'x^2-y^2+xy', f: (x, y) => x * x - y * y + x * y, txt: 'f(x;y)=x^2-y^2+xy', a: [0.4, -0.3], z: [-1.6, 1.8] },
-    desc: { tex: '\\frac{xy}{x^2+y^2}', f: (x, y) => (r2(x, y) === 0 ? 0 : (x * y) / r2(x, y)), txt: 'f(x;y)=\\frac{xy}{x^2+y^2},\\ f(0;0)=0', a: [0, 0], z: [-0.8, 0.8] },
-    raiz: { tex: '\\frac{xy}{\\sqrt{x^2+y^2}}', f: (x, y) => (r2(x, y) === 0 ? 0 : (x * y) / Math.sqrt(r2(x, y))), txt: 'f(x;y)=\\frac{xy}{\\sqrt{x^2+y^2}},\\ f(0;0)=0', a: [0, 0], z: [-0.9, 0.9] },
-    cone: { tex: '\\sqrt{x^2+y^2}', f: (x, y) => Math.sqrt(r2(x, y)), txt: 'f(x;y)=\\sqrt{x^2+y^2}=\\|(x;y)\\|', a: [0, 0], z: [-0.1, 1.7] },
+    quad: { tex: 'x^2+y^2', valor: 'x^2+y^2', a: [0.5, 0.3] },
+    sela: { tex: 'x^2-y^2+xy', valor: 'x^2-y^2+xy', a: [0.4, -0.3] },
+    desc: { tex: '\\frac{xy}{x^2+y^2}', valor: R0('xy/(x^2+y^2)'), a: [0, 0] },
+    raiz: { tex: '\\frac{xy}{\\sqrt{x^2+y^2}}', valor: R0('xy/sqrt(x^2+y^2)'), a: [0, 0] },
+    cone: { tex: '\\sqrt{x^2+y^2}', valor: 'sqrt(x^2+y^2)', a: [0, 0] },
+    teste: { tex: '|x-y|', valor: '|x-y|', a: [0, 0] },
   };
-  const OPC = Object.keys(F).map((k) => [k, '$' + F[k].tex + '$']);
+  const LISTA = Object.keys(F).map((k) => Object.assign({ k }, F[k]));
+  const EXS = LISTA.map((p) => ['$' + p.tex + '$', p.valor, { x0: p.a[0], y0: p.a[1] }]);
+  const qual = (v) => { const p = CDI.preset(LISTA, v); return p ? p.k : null; };
+  CDI.exemplosDif = EXS;
 
   /* derivadas laterais na direção u (unitário): existem as duas e coincidem? */
   function lateral(f, a, u, t = 1e-6) {
@@ -42,7 +48,7 @@
     C.sup((r, t) => { const x = r * Math.cos(t), y = r * Math.sin(t), z = f(x, y); return z < zr[0] || z > zr[1] ? null : [x, y, z]; }, 0.015, 1.15, 0, 2 * Math.PI, 22, 64, { alfa: 0.82 });
   }
 
-  CDI.materia({
+  CDI.modelosDe('diferenciabilidade', {
     id: 'diferenciabilidade', ordem: 2, grupo: 'Cálculo diferencial', curto: 'Diferenciabilidade', titulo: 'Diferenciabilidade', paginas: 'pp. 6–16',
     resumo: 'Plano tangente, a definição com $o(h)$, derivadas parciais e direcionais, Jacobiana e contraexemplos.',
     modelos: [
@@ -52,20 +58,20 @@
           const cor = M.cores();
           const V = M.vista3d({ ext: 1.7, alvo: [0, 0, 0.35] });
           const G = M.plano({ janela: [-0.08, 1.05, -0.12, 1.3], livre: true, dica: 'Rácio do erro em função de ‖h‖' });
-          M.escolha('f', { rot: 'Função', opcoes: OPC, valor: 'quad', aoMudar: (k) => { M.S.x0 = F[k].a[0]; M.S.y0 = F[k].a[1]; } });
+          M.funcao('f', { vars: ['x', 'y'], valor: F.quad.valor, ramos: true, exemplos: EXS });
           M.barra('x0', { rot: '$a_1$', cor: cor.u, min: -1, max: 1, valor: 0.5, nome: 'primeira coordenada de a' });
           M.barra('y0', { rot: '$a_2$', cor: cor.v, min: -1, max: 1, valor: 0.3, nome: 'segunda coordenada de a' });
           M.barra('hn', { rot: '$\\|h\\|$', cor: cor.n, min: 0.01, max: 0.9, valor: 0.5, nome: 'comprimento de h', dur: 5000 });
           M.barra('ha', { rot: '$\\alpha$', cor: cor.n, min: 0, max: 2 * Math.PI, valor: 0.785, fmt: CM.graus, circular: true, nome: 'direção de h' });
           M.caixa('plano', { rot: 'Plano tangente', valor: true });
           const est = (S) => {
-            const f = F[S.f].f, a = [S.x0, S.y0], h = [S.hn * Math.cos(S.ha), S.hn * Math.sin(S.ha)];
+            const f = M.F.f.f, a = [S.x0, S.y0], h = [S.hn * Math.cos(S.ha), S.hn * Math.sin(S.ha)];
             const R = dif(f, a);
             return { f, a, h, R, D: R.D };
           };
           M.cena(V, (C, S) => {
             const { f, a, h, D } = est(S);
-            cenaSup(C, S, cor, f, F[S.f].z);
+            cenaSup(C, S, cor, f, CDI.faixaZ(f, -1.15, 1.15, -1.15, 1.15));
             const P = [a[0], a[1], f(a[0], a[1])];
             if (D.ok && S.plano) C.plano(P, [-D.fx, -D.fy, 1], 0.6, { cor: cor.ouro, alfa: 0.32 });
             const Q = [a[0] + h[0], a[1] + h[1], f(a[0] + h[0], a[1] + h[1])];
@@ -104,13 +110,14 @@
             rows.push(R.dif ? '<b>Diferenciável em $a$</b>: o erro é $o(h)$, o rácio vai para $0$ em todas as direções.' : D.ok ? '<b>Não é diferenciável em $a$</b>: as parciais existem, mas o rácio não vai para $0$ (experimenta $\\alpha=45^\\circ$).' : '<b>Não é diferenciável em $a$</b>: falta pelo menos uma derivada parcial.');
             return rows;
           });
-          M.texto((S) => '<b class="t">$' + F[S.f].txt + '$</b><p>' + ({
+          M.texto((S) => qual(S.f) && '<b class="t">$f=' + M.F.f.tex + '$</b><p>' + ({
             quad: 'Polinómio: tem parciais contínuas em todo o $\\mathbb R^2$ (é $C^1$), logo é diferenciável em todo o lado.',
             sela: 'Polinómio, logo $C^1$ e diferenciável. O plano tangente atravessa a superfície porque esta curva para cima numa direção e para baixo noutra.',
             desc: 'Não é contínua em $(0;0)$: ao longo de $y=x$ vale sempre $\\tfrac12$. Diferenciável $\\Rightarrow$ contínua, logo não é diferenciável na origem, apesar de $\\frac{\\partial f}{\\partial x}(0;0)=\\frac{\\partial f}{\\partial y}(0;0)=0$.',
             raiz: 'É contínua e tem as duas parciais nulas na origem, mas o plano $z=0$ não a aproxima: $f(t;t)/\\|(t;t)\\|=\\tfrac12$ não tende para $0$. Existirem as parciais não chega para ser diferenciável.',
             cone: 'Na origem, $\\frac{\\partial f}{\\partial x}(0;0)=\\lim\\frac{|t|}{t}$ não existe ($+1$ por um lado, $-1$ pelo outro). Sem parciais não há Jacobiana, logo não é diferenciável. Fora da origem é $C^1$.',
-          })[S.f] + '</p>', 'chave');
+            teste: 'Exemplo do 1.º teste de 2024/25: é contínua na origem ($|x-y|\\le2\\|(x;y)\\|$), mas $\\frac{\\partial f}{\\partial x}(0;0)$ não existe ($-1$ e $+1$ pelos dois lados), logo não é diferenciável.',
+          })[qual(S.f)] + '</p>', 'chave');
           M.texto('<b class="t">Definição</b><p>$f$ é diferenciável em $a$ se existe uma transformação linear $Df(a)$ com</p>$$\\lim_{\\|h\\|\\to0}\\frac{|f(a+h)-f(a)-Df(a)h|}{\\|h\\|}=0,$$<p>isto é, $f(a+h)-f(a)-Df(a)h=o(h)$. Diferenciável $\\Rightarrow$ contínua e com todas as derivadas parciais e direcionais. O recíproco é falso. Condição suficiente: parciais contínuas numa vizinhança de $a$ ($f$ de classe $C^1$).</p>', 'nota');
           M.legenda([[cor.u, '$P=(a;f(a))$'], [cor.ouro, 'plano tangente'], [cor.n, '$h$ e $f(a+h)$'], [cor.r, 'erro $f(a+h)-f(a)-Df(a)h$']]);
         },
@@ -121,15 +128,15 @@
           const cor = M.cores();
           const V = M.vista3d({ ext: 1.7, alvo: [0, 0, 0.35] });
           const G = M.plano({ janela: [-0.2, 6.6, -1.7, 1.7], livre: true, dica: 'Derivada na direção v em função do ângulo θ' });
-          M.escolha('f', { rot: 'Função', opcoes: OPC, valor: 'raiz', aoMudar: (k) => { M.S.x0 = F[k].a[0]; M.S.y0 = F[k].a[1]; } });
+          M.funcao('f', { vars: ['x', 'y'], valor: F.raiz.valor, ramos: true, exemplos: EXS });
           M.barra('th', { rot: '$\\theta$', cor: cor.b, min: 0, max: 2 * Math.PI, valor: 0.785, fmt: CM.graus, circular: true, nome: 'ângulo de v', dur: 7000 });
           M.barra('x0', { rot: '$a_1$', cor: cor.u, min: -1, max: 1, valor: 0 });
           M.barra('y0', { rot: '$a_2$', cor: cor.v, min: -1, max: 1, valor: 0 });
           M.caixa('pv', { rot: 'Plano vertical do corte', valor: true });
-          const est = (S) => { const f = F[S.f].f, a = [S.x0, S.y0], v = [Math.cos(S.th), Math.sin(S.th)]; return { f, a, v, L: lateral(f, a, v), D: parciais(f, a) }; };
+          const est = (S) => { const f = M.F.f.f, a = [S.x0, S.y0], v = [Math.cos(S.th), Math.sin(S.th)]; return { f, a, v, L: lateral(f, a, v), D: parciais(f, a) }; };
           M.cena(V, (C, S) => {
             const { f, a, v, L } = est(S);
-            const zr = F[S.f].z;
+            const zr = CDI.faixaZ(f, -1.15, 1.15, -1.15, 1.15);
             cenaSup(C, S, cor, f, zr);
             const P = [a[0], a[1], f(a[0], a[1])];
             if (S.pv) C.poli([[a[0] - 1.1 * v[0], a[1] - 1.1 * v[1], zr[0]], [a[0] + 1.1 * v[0], a[1] + 1.1 * v[1], zr[0]], [a[0] + 1.1 * v[0], a[1] + 1.1 * v[1], zr[1]], [a[0] - 1.1 * v[0], a[1] - 1.1 * v[1], zr[1]]], { cor: cor.b, alfa: 0.12, plano: 1 });
@@ -162,7 +169,7 @@
             const lim = (x) => (Math.abs(x) < 1e4 ? '$' + TX.n(x, 3) + '$' : '$\\pm\\infty$');
             const rows = [['$v=(\\cos\\theta;\\sin\\theta)$', '$' + TX.v(v, 3) + '$'], ['$\\lim_{t\\to0^+}\\frac{f(a+tv)-f(a)}{t}$', lim(L.dp)], ['$\\lim_{t\\to0^-}\\frac{f(a+tv)-f(a)}{t}$', lim(L.dm)], ['$\\frac{\\partial f}{\\partial v}(a)$', L.ok ? '$' + TX.n(L.d, 3) + '$' : 'não existe', L.ok ? 'forte' : 'mau']];
             if (D.ok) rows.push(['$\\nabla f(a)\\cdot v$', '$' + TX.n(D.fx * v[0] + D.fy * v[1], 3) + '$']);
-            const R = dif(F[S.f].f, a);
+            const R = dif(M.F.f.f, a);
             rows.push(R.dif ? 'Diferenciável: $\\frac{\\partial f}{\\partial v}(a)=Df(a)v$ para todo o $v$. As curvas coincidem.' : 'Não diferenciável em $a$: $\\frac{\\partial f}{\\partial v}(a)$ não é $Df(a)v$ em todas as direções.');
             return rows;
           });
@@ -183,7 +190,10 @@
           const D1 = M.plano({ janela: [-2.6, 2.6, -2, 2], dica: 'Domínio: arrasta a' });
           const D2 = M.plano({ janela: [-3, 3, -2.3, 2.3], dica: 'Imagem: F (cheio) e a aproximação linear (tracejado)' });
           M.S.a = [0.5, 0.5];
-          M.escolha('m', { rot: '$F:\\mathbb R^2\\to\\mathbb R^2$', opcoes: Object.keys(MAP).map((k) => [k, '$' + MAP[k].tex + '$']), valor: 'lin', aoMudar: (k) => (M.S.a = MAP[k].a.slice()) });
+          const SRC = { lin: '(x+y; x-3y)', pol: '(x cos y; x sen y)', quad: '(x^2-y^2; 2xy)', xy: '(xy; y/x)' };
+          Object.keys(MAP).forEach((k) => (MAP[k].valor = SRC[k]));
+          M.funcao('F', { rot: '$F(x;y)=$', vars: ['x', 'y'], componentes: 2, valor: SRC.lin, exemplos: Object.keys(MAP).map((k) => ['$' + MAP[k].tex + '$', SRC[k], { a: MAP[k].a.slice() }]) });
+          const mapa = () => { const f = M.F.F.f; return { F: (x, y) => f(x, y), J: (Object.values(MAP).find((q) => q.valor === M.S.F) || {}).J }; };
           M.barra('s', { rot: 'lado', cor: cor.n, min: 0.05, max: 1, valor: 0.6, nome: 'lado do quadrado', dica: 'Encolhe o quadrado: a imagem por F fica cada vez mais igual à imagem por DF(a), um paralelogramo.' });
           const quad = (S) => { const h = S.s / 2, a = S.a; const L = []; for (let i = 0; i <= 4; i++) { const u = -h + (2 * h * i) / 4; L.push({ c: i === 0 ? 'u' : i === 4 ? 'u' : 'm', pts: Array.from({ length: 41 }, (_, k) => [a[0] + u, a[1] - h + (2 * h * k) / 40]) }); L.push({ c: i === 0 || i === 4 ? 'v' : 'm', pts: Array.from({ length: 41 }, (_, k) => [a[0] - h + (2 * h * k) / 40, a[1] + u]) }); } return L; };
           M.cena(D1, (P, S) => {
@@ -194,7 +204,7 @@
             P.ponto(S.a, { cor: cor.i, rot: 'a', arr: (x, y) => M.definir({ a: [x, y] }) });
           });
           M.cena(D2, (P, S) => {
-            const mp = MAP[S.m], Fa = mp.F(S.a[0], S.a[1]), J = CM.jac(mp.F, S.a[0], S.a[1]);
+            const mp = mapa(), Fa = mp.F(S.a[0], S.a[1]), J = CM.jac(mp.F, S.a[0], S.a[1]);
             const L = quad(S).map((l) => ({ c: l.c, f: l.pts.map((p) => mp.F(p[0], p[1])), g: l.pts.map((p) => CM.add(Fa, CM.mxv(J, [p[0] - S.a[0], p[1] - S.a[1]]))) }));
             let m = 0.3;
             L.forEach((l) => l.f.concat(l.g).forEach((q) => { if (isFinite(q[0])) m = Math.max(m, Math.abs(q[0] - Fa[0]), Math.abs(q[1] - Fa[1])); }));
@@ -208,8 +218,8 @@
             P.ponto(Fa, { cor: cor.i, rot: 'F(a)' });
           });
           M.leituras('Em $a$', (S) => {
-            const mp = MAP[S.m], J = CM.jac(mp.F, S.a[0], S.a[1]);
-            return [['$a$', '$' + TX.v(S.a, 2) + '$'], ['$F(a)$', '$' + TX.v(mp.F(S.a[0], S.a[1]), 3) + '$'], ['$DF(x;y)$', '$' + mp.J + '$'], ['$DF(a)$', '$' + TX.m(J, 3) + '$', 'forte'], ['$\\det DF(a)$', '$' + TX.n(CM.det2(J), 3) + '$']];
+            const mp = mapa(), J = CM.jac(mp.F, S.a[0], S.a[1]);
+            return [['$a$', '$' + TX.v(S.a, 2) + '$'], ['$F(a)$', '$' + TX.v(mp.F(S.a[0], S.a[1]), 3) + '$'], ].concat(mp.J ? [['$DF(x;y)$', '$' + mp.J + '$']] : []).concat([['$DF(a)$', '$' + TX.m(J, 3) + '$', 'forte'], ['$\\det DF(a)$', '$' + TX.n(CM.det2(J), 3) + '$']]);
           });
           M.texto('<b class="t">A Jacobiana coluna a coluna</b><p>A coluna $j$ de $DF(a)$ é $DF(a)e_j=\\frac{\\partial F}{\\partial x_j}(a)$: deriva-se cada componente em ordem a $x_j$ e põe-se em coluna. $F:\\mathbb R^n\\to\\mathbb R^m$ dá uma matriz $m\\times n$ (uma linha por componente, uma coluna por variável).</p><p>Exemplo das teóricas: $f(x;y)=(x;\\,xy;\\,x/y)$ dá</p>$$Df(x;y)=\\begin{bmatrix}1&0\\\\y&x\\\\1/y&-x/y^2\\end{bmatrix}.$$<p>Para $g(t)=(t;\\,t^2;\\,\\arctan t)$, $Dg(t)=g\'(t)=\\big(1;\\,2t;\\,\\frac{1}{1+t^2}\\big)$, uma coluna.</p>', 'nota');
           M.legenda([[cor.u, 'lados com $x$ constante e $DF(a)e_1$'], [cor.v, 'lados com $y$ constante e $DF(a)e_2$'], [cor.m, 'tracejado: $F(a)+DF(a)(x-a)$']]);

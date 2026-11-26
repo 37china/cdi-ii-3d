@@ -14,14 +14,37 @@
     quad: { nome: 'quadrado', g: (t, S) => { const L = 2 * S.R, s = ((t % 4) + 4) % 4, x0 = S.cx - S.R, y0 = S.cy - S.R; return s < 1 ? [x0 + L * s, y0] : s < 2 ? [x0 + L, y0 + L * (s - 1)] : s < 3 ? [x0 + L * (3 - s), y0 + L] : [x0, y0 + L * (4 - s)]; }, t: [0, 4], dentro: (x, y, S) => Math.abs(x - S.cx) < S.R && Math.abs(y - S.cy) < S.R, area: (S) => 4 * S.R * S.R,
       pd: (u, v, S) => [S.cx - S.R + 2 * S.R * u, S.cy - S.R + 2 * S.R * v] },
   };
+
+  /* campo escrito pelo aluno; se coincidir com um exemplo, usa as fórmulas exatas desse exemplo */
+  const SRCF = { rot: '(-y; x)', grad: '(x+y; x+e^y+1)', vort: '(-y/(x^2+y^2); x/(x^2+y^2))', cubo: '(-y^3; x^3)', sep: '(x^2; y^3)' };
+  const SRCP = { grad: 'xy+x^2/2+e^y+y', sep: 'x^3/3+y^4/4', vort: '' };
+  const EXF = Object.keys(SRCF).map((k) => ['$' + CA[k].tex + '$', SRCF[k], { phi: SRCP[k] || '' }]);
+  function campoDe(M, S) {
+    const k = Object.keys(SRCF).find((q) => SRCF[q] === S.F);
+    if (k) return Object.assign({ chave: k }, CA[k]);
+    const F = M.F.F.f, h = 1e-4;
+    const rot = (x, y) => (F(x + h, y)[1] - F(x - h, y)[1]) / (2 * h) - (F(x, y + h)[0] - F(x, y - h)[0]) / (2 * h);
+    const v0 = F(0, 0);
+    const phi = M.F.phi ? M.F.phi.f : null;
+    return { chave: null, F, rot, rtx: '\\text{calculado numericamente}', pot: phi, ptx: M.F.phi ? '\\varphi=' + M.F.phi.tex : '', sing: !(isFinite(v0[0]) && isFinite(v0[1])) };
+  }
+  /* maior diferença entre ∇φ e F numa grelha (para verificar um potencial proposto) */
+  function erroPotencial(F, phi) {
+    let m = 0;
+    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+      const x = -2 + 0.5 * i + 0.013, y = -2 + 0.5 * j + 0.017, v = F(x, y), g = CM.grad(phi, x, y);
+      if (isFinite(v[0]) && isFinite(g[0])) m = Math.max(m, Math.abs(v[0] - g[0]), Math.abs(v[1] - g[1]));
+    }
+    return m;
+  }
   function linhaQuad(F, g, S, t0, t1) { // quadrado: somar lado a lado (a parametrização tem bicos)
     let s = 0;
     for (let k = Math.floor(t0); k < Math.ceil(t1); k++) { const a = Math.max(t0, k), b = Math.min(t1, k + 1); if (b > a) s += CM.linha(F, (t) => g(t, S), a, b, 400); }
     return s;
   }
-  const circulacao = (S, t1) => { const c = CU[S.c], F = CA[S.f].F; const T = t1 == null ? c.t[1] : t1; return S.c === 'quad' ? linhaQuad(F, c.g, S, 0, T) : CM.linha(F, (t) => c.g(t, S), 0, T, 1200); };
+  const circulacao = (S, t1) => { const c = CU[S.c], F = S._F || CA.rot.F; const T = t1 == null ? c.t[1] : t1; return S.c === 'quad' ? linhaQuad(F, c.g, S, 0, T) : CM.linha(F, (t) => c.g(t, S), 0, T, 1200); };
   function duploRot(S) {
-    const c = CU[S.c], r = CA[S.f].rot;
+    const c = CU[S.c], r = S._rot || CA.rot.rot;
     if (S.c === 'circ') return CM.simpson((rr) => CM.simpson((t) => r(S.cx + rr * Math.cos(t), S.cy + rr * Math.sin(t)) * rr, 0, 2 * PI, 60), 0, S.R, 60);
     return CM.riemann((x, y) => c.dentro(x, y, S), r, S.cx - S.R, S.cx + S.R, S.cy - S.R, S.cy + S.R, 90);
   }
@@ -58,7 +81,7 @@
     for (let k = 0; k < 4; k++) { const t = ang + (k * PI) / 2; G.curva([c, [c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)]], { cor, larg: 2 }); }
   }
 
-  CDI.materia({
+  CDI.modelosDe('green', {
     id: 'green', ordem: 11, grupo: 'Cálculo integral', curto: 'Campos e Green', titulo: 'Campos vetoriais e teorema de Green', paginas: 'pp. 49–53',
     resumo: 'Trabalho ao longo de uma curva, potenciais, campos fechados, o teorema de Green e conjuntos simplesmente conexos.',
     modelos: [
@@ -69,15 +92,16 @@
           const P = M.plano({ janela: [-2.4, 2.4, -2, 2], dica: 'Arrasta o centro da curva e a roda de pás' });
           const V = M.vista3d({ ext: 2.2, alvo: [0, 0, 0.3], yaw: -0.8, pitch: 0.55, dica: 'Altura = rotacional · o volume com sinal sobre D é o integral duplo' });
           M.S.cx = 0; M.S.cy = 0; M.S.W = [-1.5, 1.2];
-          M.escolha('f', { rot: 'Campo $F(x;y)$', opcoes: Object.keys(CA).map((k) => [k, '$' + CA[k].tex + '$']), valor: 'rot' });
+          M.funcao('F', { rot: '$F(x;y)=(P;Q)=$', vars: ['x', 'y'], componentes: 2, valor: SRCF.rot, exemplos: EXF.map((e) => e.slice(0, 2)) });
+          M.sync.push(() => { const ca = campoDe(M, M.S); M.S._F = ca.F; M.S._rot = ca.rot; });
           M.escolha('c', { rot: 'Curva $L=\\partial D$ (sentido positivo)', opcoes: Object.keys(CU).map((k) => [k, CU[k].nome]), valor: 'circ' });
           M.barra('R', { rot: '$R$', cor: cor.u, min: 0.2, max: 1.4, valor: 1, nome: 'tamanho' });
           M.barra('t', { rot: '$t$', cor: cor.n, min: 0, max: 1, valor: 1, nome: 'fração percorrida', dur: 5000, fmt: (x) => Math.round(x * 100) + '%' });
           M.caixa('rotm', { rot: 'Cores: $\\frac{\\partial F_2}{\\partial x}-\\frac{\\partial F_1}{\\partial y}$', valor: true });
           M.caixa('anim', { rot: 'Fluido a correr (partículas e roda de pás)', valor: true });
-          const desenharFluido = fluido(M, P, () => CA[M.S.f], () => M.S.W);
+          const desenharFluido = fluido(M, P, () => campoDe(M, M.S), () => M.S.W);
           M.cena(P, (G, S) => {
-            const ca = CA[S.f], c = CU[S.c];
+            const ca = campoDe(M, S), c = CU[S.c];
             if (S.rotm) {
               const az = hexRgb(cor.b), lj = hexRgb(cor.u);
               G.mapa((x, y) => { const v = ca.rot(x, y); if (Math.abs(v) < 1e-9) return null; const k = Math.min(1, Math.abs(v) / 6); const c0 = v > 0 ? lj : az; return [c0[0], c0[1], c0[2], Math.round(22 + 60 * k)]; }, 5);
@@ -98,7 +122,7 @@
             G.ponto([S.cx, S.cy], { cor: cor.a, r: 4, arr: (x, y) => M.definir({ cx: x, cy: y }) });
           });
           M.cena(V, (C, S) => {
-            const ca = CA[S.f], c = CU[S.c];
+            const ca = campoDe(M, S), c = CU[S.c];
             let m = 0.5;
             for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) m = Math.max(m, Math.abs(ca.rot(S.cx - S.R + (2 * S.R * i) / 8, S.cy - S.R + (2 * S.R * j) / 8)));
             const k = 1.3 / m, h = (x, y) => k * ca.rot(x, y);
@@ -113,11 +137,11 @@
             if (ca.sing) C.linha([0, 0, -0.3], [0, 0, 1.8], { cor: cor.r, larg: 2, trac: [3, 3] });
           });
           M.leituras('As duas contas', (S) => {
-            const ca = CA[S.f], c = CU[S.c];
+            const ca = campoDe(M, S), c = CU[S.c];
             const L = circulacao(S), D = duploRot(S), parc = circulacao(S, c.t[0] + (c.t[1] - c.t[0]) * S.t);
             const origemDentro = ca.sing && c.dentro(0, 0, S);
             const r = [['trabalho até agora', '$' + TX.n(parc, 4) + '$'], ['$\\oint_L F\\cdot dr$', '$' + TX.n(L, 4) + '$', 'forte'], ['$\\iint_D\\big(\\frac{\\partial F_2}{\\partial x}-\\frac{\\partial F_1}{\\partial y}\\big)\\,dx\\,dy$', '$' + TX.n(D, 4) + '$', 'forte'], ['$\\frac{\\partial F_2}{\\partial x}-\\frac{\\partial F_1}{\\partial y}$', '$' + ca.rtx + '$']];
-            if (S.f === 'rot') r.push(['$=2\\cdot\\text{área}(D)$', '$' + TX.n(2 * c.area(S), 4) + '$']);
+            if (ca.chave === 'rot') r.push(['$=2\\cdot\\text{área}(D)$', '$' + TX.n(2 * c.area(S), 4) + '$']);
             r.push(origemDentro ? '<b>Green não se aplica:</b> $F$ não é $C^1$ em $D$ (falha na origem). A circulação é $2\\pi$, mas o integral duplo do rotacional, fora da origem, é $0$.' : Math.abs(L - D) < 1e-2 ? 'As duas contas dão o mesmo: é o teorema de Green.' : 'Diferença numérica: aumenta a resolução.');
             r.push(['roda de pás: $\\omega=\\tfrac12\\operatorname{rot}F$', '$' + TX.n(0.5 * ca.rot(...S.W), 3) + '$']);
             return r;
@@ -133,23 +157,25 @@
           const P = M.plano({ janela: [-2.4, 2.4, -2, 2], dica: 'Arrasta A, B e o ponto de controlo C do caminho curvo' });
           const V = M.vista3d({ ext: 2.3, alvo: [0, 0, 0.2], yaw: -0.7, pitch: 0.5, dica: 'Altura = potencial: o trabalho é a diferença de alturas' });
           M.S.A = [1.4, 0.2]; M.S.B = [-1.2, 0.6]; M.S.K = [0.2, 1.6];
-          M.escolha('f', { rot: 'Campo $F(x;y)$', opcoes: ['grad', 'sep', 'vort', 'rot'].map((k) => [k, '$' + CA[k].tex + '$']), valor: 'vort' });
+          M.funcao('F', { rot: '$F(x;y)=$', vars: ['x', 'y'], componentes: 2, valor: SRCF.vort, exemplos: ['grad', 'sep', 'vort', 'rot'].map((k) => ['$' + CA[k].tex + '$', SRCF[k], { phi: SRCP[k] || '' }]) });
+          M.funcao('phi', { rot: 'O teu potencial (opcional): $\\varphi(x;y)=$', vars: ['x', 'y'], valor: '', opcional: true, ajuda: false, exemplo: 'ex.: xy + x^2/2 + e^y + y' });
+          M.sync.push(() => { const ca = campoDe(M, M.S); M.S._F = ca.F; });
           M.caixa('mapa', { rot: 'Cores: potencial $\\varphi$', valor: true });
           M.botoes([['Caminhos dos dois lados da origem', () => M.definir({ A: [1.4, 0.2], B: [-1.2, 0.6], K: [0.2, -1.7] })], ['Caminhos do mesmo lado', () => M.definir({ A: [1.4, 0.2], B: [-1.2, 0.6], K: [0.2, 1.6] })]]);
           const reta = (S) => (t) => CM.add(S.A, CM.mul(CM.sub(S.B, S.A), t));
           const curvo = (S) => (t) => { const u = 1 - t; return [u * u * S.A[0] + 2 * u * t * S.K[0] + t * t * S.B[0], u * u * S.A[1] + 2 * u * t * S.K[1] + t * t * S.B[1]]; };
           /* caminho levantado: altura = potencial contínuo ao longo do caminho (para θ, desenrolado) */
-          const levantar = (S, g, k, pot) => {
+          const levantar = (S, g, k, pot, vort) => {
             const pts = []; let th = pot(...g(0)), prev = th;
             for (let i = 0; i <= 160; i++) {
               const p = g(i / 160), v = pot(...p);
-              if (S.f === 'vort') { let d = v - prev; d -= 2 * PI * Math.round(d / (2 * PI)); th += d; prev = v; pts.push([...p, k * th]); }
+              if (vort) { let d = v - prev; d -= 2 * PI * Math.round(d / (2 * PI)); th += d; prev = v; pts.push([...p, k * th]); }
               else pts.push([...p, k * v]);
             }
             return pts;
           };
           M.cena(P, (G, S) => {
-            const ca = CA[S.f];
+            const ca = campoDe(M, S);
             if (S.mapa && ca.pot) {
               const a = hexRgb(cor.sup), b = hexRgb(cor.u);
               const [x0, x1, y0, y1] = G.limites();
@@ -167,13 +193,14 @@
             G.ponto(S.B, { cor: cor.i, rot: 'B', arr: (x, y) => M.definir({ B: [x, y] }) });
           });
           M.cena(V, (C, S) => {
-            const ca = CA[S.f];
+            const ca = campoDe(M, S);
             C.eixos({ x: [-2.2, 2.3], y: [-2.2, 2.3], z: [-1.7, 1.9], nomes: ['x', 'y', '\\varphi'] });
             C.param((t) => [...reta(S)(t), 0.004], 0, 1, 2, { cor: cor.b, larg: 1.6, alfa: 0.6 });
             C.param((t) => [...curvo(S)(t), 0.004], 0, 1, 80, { cor: cor.n, larg: 1.6, alfa: 0.6 });
-            if (!ca.pot) { C.texto([0, 0, 1.2], 'sem potencial: $\\operatorname{rot}F=2\\ne0$', { cor: cor.r }); return; }
+            if (!ca.pot) { C.texto([0, 0, 1.2], ca.chave === 'rot' ? 'sem potencial: $\\operatorname{rot}F=2\\ne0$' : 'escreve um potencial $\\varphi$ para o ver aqui', { cor: cor.r }); return; }
             let k;
-            if (S.f === 'vort') {
+            const vort = ca.chave === 'vort';
+            if (vort) {
               k = 0.22;
               C.sup((r, a) => [r * Math.cos(a), r * Math.sin(a), k * a], 0.12, 2.2, -2 * PI, 2 * PI, 10, 160, { alfa: 0.5, passoMalha: 2 });
               C.linha([0, 0, -1.7], [0, 0, 1.7], { cor: cor.r, larg: 2, trac: [3, 3] });
@@ -183,7 +210,7 @@
               k = 1.6 / m;
               C.grafico((x, y) => k * ca.pot(x, y), -2.2, 2.2, -2.2, 2.2, 40, { alfa: 0.55 });
             }
-            const l1 = levantar(S, reta(S), k, ca.pot), l2 = levantar(S, curvo(S), k, ca.pot);
+            const l1 = levantar(S, reta(S), k, ca.pot, vort), l2 = levantar(S, curvo(S), k, ca.pot, vort);
             C.curva(l1, { cor: cor.b, larg: 3.4 });
             C.curva(l2, { cor: cor.n, larg: 3.4 });
             [[l1[0], 'A'], [l1[160], 'B_1'], [l2[160], 'B_2']].forEach(([p, n]) => { C.linha([p[0], p[1], 0], p, { cor: cor.m, larg: 1, trac: [3, 3] }); });
@@ -192,12 +219,22 @@
             C.ponto(l2[160], { cor: cor.n, r: 4.5, rot: Math.abs(l1[160][2] - l2[160][2]) > 0.05 ? '$B$ (outro andar)' : '$B$' });
           });
           M.leituras('$\\int_L F\\cdot dr$ de $A$ a $B$', (S) => {
-            const ca = CA[S.f];
+            const ca = campoDe(M, S);
             const I1 = CM.linha(ca.F, reta(S), 0, 1, 1500), I2 = CM.linha(ca.F, curvo(S), 0, 1, 1500);
             const r = [['pelo segmento (azul)', '$' + TX.n(I1, 4) + '$'], ['pelo caminho curvo (roxo)', '$' + TX.n(I2, 4) + '$'], ['diferença', '$' + TX.n(I2 - I1, 4) + '$', Math.abs(I2 - I1) > 1e-3 ? 'mau' : 'forte']];
-            if (ca.pot && S.f !== 'vort') r.push(['$\\varphi(B)-\\varphi(A)$', '$' + TX.n(ca.pot(...S.B) - ca.pot(...S.A), 4) + '$', 'forte'], ['potencial', '$' + ca.ptx + '$']);
-            if (S.f === 'vort') r.push(Math.abs(Math.abs(I2 - I1) - 2 * PI) < 1e-2 ? 'Os caminhos passam de lados diferentes da origem: diferem em $2\\pi$. Na vista 3D, sobem a «escada em caracol» $\\theta$ e chegam a $B$ em andares diferentes. $F$ não é gradiente em $\\mathbb R^2\\setminus\\{0\\}$.' : 'Do mesmo lado da origem os dois integrais coincidem: localmente, $F=\\nabla\\theta$.');
-            if (S.f === 'rot') r.push('$(-y;x)$ não é fechado (rotacional $2$): o integral depende do caminho, não há potencial.');
+            if (M.F.phi) {
+              const e = erroPotencial(ca.F, M.F.phi.f);
+              r.push(['o teu $\\varphi$: $\\max|\\nabla\\varphi-F|$', '$' + TX.n(e, 4) + '$', e < 1e-3 ? 'forte' : 'mau']);
+              r.push(e < 1e-3 ? '<b>Certo:</b> $\\nabla\\varphi=F$ (verificado numa grelha de pontos).' : '<b>Ainda não:</b> $\\nabla\\varphi\\ne F$. Confirma: $\\partial_x\\varphi$ tem de dar $F_1$ e $\\partial_y\\varphi$ tem de dar $F_2$.');
+            }
+            if (!ca.chave) {
+              let m = 0; for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) { const v = ca.rot(-2 + 0.5 * i + 0.011, -2 + 0.5 * j + 0.019); if (isFinite(v)) m = Math.max(m, Math.abs(v)); }
+              r.push(['$\\max\\big|\\frac{\\partial F_2}{\\partial x}-\\frac{\\partial F_1}{\\partial y}\\big|$', '$' + TX.n(m, 4) + '$']);
+              r.push(m < 1e-3 ? 'O campo é <b>fechado</b>' + (ca.sing ? ', mas tem uma singularidade na origem: vê se os integrais pelos dois caminhos coincidem.' : ' num domínio simplesmente conexo: é gradiente.') : 'O campo <b>não é fechado</b>: não pode ser gradiente, e o integral depende do caminho.');
+            }
+            if (ca.pot && ca.chave !== 'vort') r.push(['$\\varphi(B)-\\varphi(A)$', '$' + TX.n(ca.pot(...S.B) - ca.pot(...S.A), 4) + '$', 'forte'], ['potencial', '$' + ca.ptx + '$']);
+            if (ca.chave === 'vort') r.push(Math.abs(Math.abs(I2 - I1) - 2 * PI) < 1e-2 ? 'Os caminhos passam de lados diferentes da origem: diferem em $2\\pi$. Na vista 3D, sobem a «escada em caracol» $\\theta$ e chegam a $B$ em andares diferentes. $F$ não é gradiente em $\\mathbb R^2\\setminus\\{0\\}$.' : 'Do mesmo lado da origem os dois integrais coincidem: localmente, $F=\\nabla\\theta$.');
+            if (ca.chave === 'rot') r.push('$(-y;x)$ não é fechado (rotacional $2$): o integral depende do caminho, não há potencial.');
             return r;
           });
           M.texto('<b class="t">Campos gradientes</b><p>Se $F=\\nabla\\varphi$, então $\\int_L F\\cdot dr=\\varphi(B)-\\varphi(A)$ para qualquer caminho de $A$ a $B$: na vista 3D, é a subida de $A$ até $B$ no gráfico de $\\varphi$, e não depende do caminho. Em caminhos fechados, $\\oint F=0$.</p><p>$F$ fechado ($\\frac{\\partial F_2}{\\partial x}=\\frac{\\partial F_1}{\\partial y}$) num domínio <b>simplesmente conexo</b> $\\Rightarrow$ $F$ é gradiente. Em $\\mathbb R^2\\setminus\\{0\\}$ isso falha: o vórtice é fechado, mas o seu «potencial» $\\theta$ é uma escada em caracol que sobe $2\\pi$ por volta.</p><p>Em $\\mathbb R^3$: $\\mathbb R^3\\setminus\\{0\\}$ é simplesmente conexo (um laço desvia-se pelo lado), mas $\\mathbb R^3$ sem uma reta não é.</p>', 'nota');

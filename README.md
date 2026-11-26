@@ -1,67 +1,44 @@
-# CDI II 3D
+# CDI II IST
 
-Modelos 3D interativos de Cálculo Diferencial e Integral II, feitos a partir dos apontamentos das teóricas (Alameda). Servem para explorar a matéria e para a explicar a outras pessoas.
+App de Cálculo Diferencial e Integral II (IST) que parte das definições: em cada matéria, definição → teoremas e proposições (com as hipóteses) → exemplos → contraexemplos → exercícios. Ao lado há sempre um modelo 2D/3D onde escreves as tuas próprias funções.
 
-**App:** https://37china.github.io/cdi-ii-3d/
+**App:** https://37china.github.io/cdi-ii-3d/ · versão anterior: https://37china.github.io/cdi-ii-3d/antiga/
 
-## Matérias
+## Matérias (uma por linha do programa)
 
-| # | Matéria | Modelos | Apontamentos |
-|---|---|---|---|
-| 1 | Topologia em ℝⁿ | Bolas e pontos em ℝ²; bolas em ℝ³ (esfera, cilindro, cone); sucessões e fecho | pp. 2–5 |
-| 2 | Diferenciabilidade | Plano tangente e o(h); derivada direcional; Jacobiana | pp. 6–16 |
-| 3 | Regra da cadeia | Ao longo de uma curva; forma matricial com o gráfico de f∘g e o plano tangente | pp. 16–21 |
-| 4 | Linhas, gradiente e plano tangente | Vetor tangente; gradiente e linhas de nível (com o gráfico em 3D); plano tangente a superfícies de nível | pp. 18–24 |
-| 5 | Hessiana e extremos livres | Pontos críticos e valores próprios; Schwarz | pp. 24–27 |
-| 6 | Função inversa e implícita | Implícita (com o gráfico de F e o corte z = 0); inversa em ℝ²; inversa em ℝ | pp. 27–33 |
-| 7 | Extremos condicionados | Uma restrição, com a curva levantada até ao gráfico de f; duas restrições em ℝ³ | pp. 33–35 |
-| 8 | Integrais duplos e triplos | Volume debaixo de f, fatias e somas de Riemann; área por cortes e ordens; cortes em z e as 3! ordens | pp. 35–41 |
-| 9 | Mudança de variáveis | Polares, elipse, região deslocada, anel; células cilíndricas e esféricas em 3D | pp. 41–45 |
-| 10 | Coordenadas cilíndricas e esféricas | O ponto P e a caixinha de volume; os sólidos das teóricas e os cortes θ constante | pp. 45–49 |
-| 11 | Campos vetoriais e Green | Green com fluido, roda de pás e o rotacional em 3D; potencial como superfície (e a escada em caracol do vórtice); área com Green | pp. 49–53 |
-| 12 | Superfícies em ℝ³ | Esfera parametrizada; gráfico; área | — |
+| # | Linha do programa | Modelos |
+|---|---|---|
+| 1 | Noções básicas topológicas em ℝⁿ, sucessões | bolas e pontos em ℝ², bolas em ℝ³, sucessões e fecho |
+| 2 | Campos escalares e vetoriais. Limite e continuidade. Diferenciabilidade e gradiente | desenha a tua função (ℝ, ℝ², ℝ³), campo vetorial, limites por caminhos, plano tangente e o(h), derivada direcional, Jacobiana, regra da cadeia, gradiente e níveis, plano tangente a superfícies de nível |
+| 3 | Teorema de valor intermédio | valor intermédio num caminho (com domínio e funções descontínuas) |
+| 4 | Funções Cᵏ, lema de Schwarz. Extremos e pontos de sela | derivadas de 2.ª ordem, pontos críticos |
+| 5 | Weierstrass, Taylor, Hessiana, multiplicadores de Lagrange | extremos num compacto, polinómio de Taylor, Hessiana, Lagrange em ℝ² e ℝ³ |
+| 6 | Inversa e implícita | inversa em ℝ e em ℝ², função implícita |
+| 7 | Integrais múltiplos e aplicações | volume e somas de Riemann, cortes e ordens, integrais triplos, sólido pelos limites (o aluno propõe, a app verifica), polares, células, mudar de coordenadas passo a passo, cilíndricas, esféricas |
+| 8 | Curvas, caminhos e integrais de linha | vetor tangente, comprimento e ∫f ds (massa, centro de massa, inércia), trabalho ∫F·dr |
+| 9 | TFC para integrais de linha | trabalho com potencial proposto pelo aluno, potencial e caminhos |
+| 10 | Green | teorema de Green (fluido e roda de pás), área com Green |
+| 11 | Campos vetoriais gradientes de campos escalares | campos fechados, potencial, vórtice |
+| + | Superfícies em ℝ³ (extra) | esfera parametrizada, gráfico, área |
 
-## Três modos em cada matéria
+## Três modos
 
-- **Explorar:** os modelos para mexer à vontade. Arrasta para rodar, usa a pinça (ou Ctrl + roda do rato) para o zoom, ▶ anima cada barra, e os pontos marcados com um anel arrastam-se diretamente no desenho.
-- **Explicar:** uma sequência de passos para mostrar a alguém. Cada passo põe o modelo no estado certo e tem o texto ao lado.
-- **Testa-te:** perguntas de escolha múltipla com a justificação da resposta. A pontuação só dura enquanto a página está aberta.
+- **Aprender:** os passos da matéria, partindo das definições, com o modelo ao lado sempre disponível. Os teoremas centrais têm um esboço da demonstração.
+- **Laboratório:** os modelos, livres.
+- **Exercícios:** aquecimento de escolha múltipla e exercícios originais do tipo dos testes, cada um com dicas, resolução passo a passo ou só a solução, «Abrir no modelo» e «Gerar outro».
 
-O endereço muda à medida que navegas. Por exemplo, `#/hessiana/criticos/explicar/5` abre o passo 5 do Explicar da Hessiana. Assim podes mandar a alguém o link exato.
+Em todos os modelos podes escrever as funções como no caderno: `2x`, `xy`, `x^2` ou `x²`, `sen`/`sin`, `√` ou `sqrt`, `|x|`, `pi`, `e`, decimais com vírgula ou ponto, coordenadas separadas por `;`, funções por ramos e condições com `≤`, `≥`, `≠`, `e`, `ou`.
 
-## Privacidade
-
-Não há servidor, contas nem base de dados. A app não guarda nada no dispositivo, exceto a cópia offline dos próprios ficheiros (para abrir sem internet depois da primeira visita). Só a letra do texto vem do Google Fonts; sem ela, usa-se a letra do sistema. O three.js e o KaTeX (com as suas fontes) estão no próprio repositório.
-
-## Instalar no iPhone ou iPad
-
-Abrir no Safari → Partilhar → Adicionar ao ecrã principal.
+O endereço guarda a matéria, o passo e as funções que escreveste: copia-o para partilhar exatamente o que estás a ver. A app não tem contas nem servidor e não guarda nada no dispositivo.
 
 ## Estrutura
 
-```
-index.html              página
-css/app.css             estilos (tema claro e escuro)
-js/math.js              contas: vetores, derivadas e integrais numéricos, linhas de nível
-js/tex.js               fórmulas com KaTeX ($…$ e $$…$$)
-js/vista3d.js           motor 3D em WebGL (three.js)
-js/plano.js             plano 2D: regiões, campos, linhas de nível, pontos arrastáveis
-js/app.js               lista de matérias, modos e controlos
-js/materias/*.js        uma matéria por ficheiro
-testes/contas.js        verifica os valores exatos usados nos textos
-testes/estrutura.js     verifica passos e perguntas
-vendor/                 three.js e KaTeX, incluídos no repositório (licenças MIT em vendor/LICENSE-*.txt)
-```
+- `index.html`, `css/app.css`, `sw.js` (funciona sem internet depois da primeira visita)
+- `js/expr.js`: leitor de expressões (texto → função e TeX, conversão de coordenadas)
+- `js/math.js`, `js/tex.js`, `js/vista3d.js`, `js/plano.js`, `js/app.js`, `js/livre.js`
+- `js/modelos/`: os modelos interativos
+- `js/materias/`: uma matéria por linha do programa (Aprender, aquecimento, exercícios e geradores)
+- `testes/`: `node testes/contas.js`, `node testes/expr.js`, `node testes/estrutura.js`
+- `antiga/`: a versão anterior
 
-Para acrescentar uma matéria, cria um ficheiro em `js/materias/` que chame `CDI.materia({...})` (os existentes servem de modelo) e junta-o ao `index.html` e ao `sw.js`.
-
-## Testes
-
-```
-node testes/contas.js
-node testes/estrutura.js
-```
-
-## Publicar
-
-GitHub Pages a partir do ramo `main`, pasta `/ (root)`. Não há passo de compilação: é HTML, CSS e JavaScript. O `vendor/t3.min.js` é um pacote do three.js (r188) feito uma vez com o esbuild, só com as partes usadas.
+Bibliotecas: three.js e KaTeX (em `vendor/`); tipos de letra Newsreader e IBM Plex (OFL), guardados localmente.

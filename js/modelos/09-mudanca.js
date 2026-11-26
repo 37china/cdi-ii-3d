@@ -52,7 +52,7 @@
     ar.forEach(([p, q, k]) => C.param((s) => g(...p.map((x, i) => x + (q[i] - x) * s)), 0, 1, 16, { cor: o.arestas[k], larg: 2.4 }));
   }
 
-  CDI.materia({
+  CDI.modelosDe('mudanca', {
     id: 'mudanca', ordem: 9, grupo: 'Cálculo integral', curto: 'Mudança de variáveis', titulo: 'Mudança de variáveis', paginas: 'pp. 41–45',
     resumo: 'Polares, cilíndricas e esféricas: caixas no domínio, células curvas na imagem, e o fator $|\\det Dg|$.',
     modelos: [

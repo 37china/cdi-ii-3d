@@ -297,6 +297,23 @@
             C.seta(a, sub(b, a), { cor: c, larg: 1.3, cab: 0.07 });
             C.texto(add(b, mul(nrm(sub(b, a)), 0.08 * ext)), '$' + nm[i] + '$', { cor: c });
           });
+          /* números nos eixos; o.esc[i] = fator de escala (o valor mostrado é coordenada ÷ fator) */
+          if (o.marcas !== false) {
+            [X, Y, Z].forEach((R, i) => {
+              const e = (o.esc && o.esc[i]) || 1, L = (R[1] - R[0]) / e;
+              const passo = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100].find((q) => L / q <= 6) || 200;
+              for (let v = Math.ceil(R[0] / e / passo) * passo; v * e <= R[1] - 0.15 * ext; v += passo) {
+                if (Math.abs(v) < 1e-9) continue;
+                const q = [0, 0, 0]; q[i] = v * e;
+                const d = document.createElement('div'); d.className = 'rot3 marca';
+                const sp = document.createElement('span'); sp.textContent = CM.fmtC(v, 2); d.appendChild(sp);
+                const l = new T.CSS2DObject(d);
+                const off = i === 2 ? [-0.05 * ext, -0.05 * ext, 0] : i === 0 ? [0, -0.06 * ext, 0] : [-0.06 * ext, 0, 0];
+                l.position.set(q[0] + off[0], q[1] + off[1], q[2] + off[2]);
+                G.add(l);
+              }
+            });
+          }
           if (o.chao !== false) {
             const lim = Math.max(Math.abs(X[0]), X[1], Math.abs(Y[0]), Y[1]);
             const n = Math.round(lim / 0.25) * 2;

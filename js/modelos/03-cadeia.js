@@ -13,7 +13,7 @@
   };
   const dg = (g, t, h = 1e-6) => { const a = g(t + h), b = g(t - h); return [(a[0] - b[0]) / (2 * h), (a[1] - b[1]) / (2 * h)]; };
 
-  CDI.materia({
+  CDI.modelosDe('cadeia', {
     id: 'cadeia', ordem: 3, grupo: 'Cálculo diferencial', curto: 'Regra da cadeia', titulo: 'Regra da cadeia', paginas: 'pp. 16–21',
     resumo: '$f\\circ g$ ao longo de uma curva e na forma matricial: a derivada da composta é o produto das Jacobianas.',
     modelos: [
@@ -23,21 +23,21 @@
           const cor = M.cores();
           const V = M.vista3d({ ext: 1.8, alvo: [0, 0, 0.3] });
           const G = M.plano({ janela: [-0.3, 6.6, -2, 2.6], livre: true, dica: 'h(t) = f(g(t)) e a reta tangente em t' });
-          M.escolha('f', { rot: '$f(x;y)$', opcoes: Object.keys(FN).map((k) => [k, '$' + FN[k].tex + '$']), valor: 'sela' });
-          M.escolha('c', { rot: '$g(t)$', opcoes: Object.keys(CU).map((k) => [k, '$' + CU[k].tex + '$']), valor: 'circ', aoMudar: (k) => (M.S.t = CU[k].t0) });
+          M.funcao('f', { vars: ['x', 'y'], valor: 'x^2-y^2', exemplos: [['$x^2+y^2$', 'x^2+y^2'], ['$x^2-y^2$', 'x^2-y^2'], ['$xy$', 'xy'], ['$e^{-x^2-y^2}$', 'e^(-x^2-y^2)']] });
+          const cam = CDI.caminho(M, 'g', { valor: '(cos t; sen t)', a: '0', b: '2pi', exemplos: [['$(\\cos t;\\operatorname{sen}t)$', '(cos t; sen t)', '0', '2pi', { t: 1 }], ['$(t;t^2)$', '(t; t^2)', '-1,1', '1,1', { t: 0.6 }], ['$(-1+2t;\\,-0{,}5+1{,}3t)$', '(-1+2t; -0,5+1,3t)', '0', '1', { t: 0.4 }]] });
           M.barra('t', { rot: '$t$', cor: cor.n, min: 0, max: 2 * Math.PI, valor: 1, nome: 'parâmetro t', dur: 7000, fmt: (x) => CM.fmt(x, 2) });
           M.caixa('vet', { rot: "$\\nabla f$ e $g'(t)$ no plano", valor: true });
-          const sync = () => { const c = CU[M.S.c], b = M.ctl.querySelector('input[aria-label="parâmetro t"]'); if (b) { b.min = c.t[0]; b.max = c.t[1]; } M.S.t = CM.clamp(M.S.t, c.t[0], c.t[1]); };
+          const sync = () => { const c = cam(), b = M.ctl.querySelector('input[aria-label="parâmetro t"]'); if (b) { b.min = c.a; b.max = c.b; b.step = (c.b - c.a) / 500; } M.S.t = CM.clamp(M.S.t, c.a, c.b); };
           M.sync.unshift(sync);
           const est = (S) => {
-            const f = FN[S.f].f, c = CU[S.c], p = c.g(S.t), v = dg(c.g, S.t), gr = CM.grad(f, p[0], p[1]);
+            const f = M.F.f.f, k = cam(), c = { g: k.g, t: [k.a, k.b] }, p = c.g(S.t), v = dg(c.g, S.t), gr = CM.grad(f, p[0], p[1]);
             const hp = CM.dot(gr, v);
             const num = (f(...c.g(S.t + 1e-5)) - f(...c.g(S.t - 1e-5))) / 2e-5;
             return { f, c, p, v, gr, hp, num };
           };
           M.cena(V, (C, S) => {
             const { f, c, p, v, gr, hp } = est(S);
-            const zr = FN[S.f].z;
+            const zr = CDI.faixaZ(f, -1.15, 1.15, -1.15, 1.15);
             C.eixos({ x: [-1.5, 1.5], y: [-1.5, 1.5], z: [Math.min(-0.2, zr[0]), Math.max(1.3, zr[1])] });
             C.sup((r, th) => { const x = r * Math.cos(th), y = r * Math.sin(th), z = f(x, y); return z < zr[0] || z > zr[1] ? null : [x, y, z]; }, 0, 1.12, 0, 2 * Math.PI, 20, 60, { alfa: 0.6 });
             C.param((t) => { const q = c.g(t); return [q[0], q[1], 0.003]; }, c.t[0], c.t[1], 120, { cor: cor.n, larg: 2, alfa: 0.7 });
@@ -86,18 +86,19 @@
           const A = M.vista3d({ ext: 1.9, alvo: [0, 0, 0.4], yaw: -0.85, pitch: 0.5, dica: 'Gráfico de h = f∘g (altura à escala) · arrasta o ponto no chão' });
           const B = M.plano({ janela: [-2, 3, -1, 4.5], dica: '(u; v) = g(x; y), com as linhas de nível de f' });
           M.S.p = [1, -1];
-          M.escolha('f', { rot: '$f(u;v)$', opcoes: Object.keys(FF).map((k) => [k, FF[k].nome]), valor: 'aula' });
+          M.funcao('g', { rot: '$g(x;y)=(u;v)=$', vars: ['x', 'y'], componentes: 2, valor: '(x+y; e^x-y)', exemplos: [['$(x+y;\\,e^x-y)$ (aula)', '(x+y; e^x-y)'], ['$(x^2-y^2;\\,2xy)$', '(x^2-y^2; 2xy)'], ['$(x\\cos y;\\,x\\operatorname{sen}y)$', '(x cos y; x sen y)']] });
+          M.funcao('f', { rot: '$f(u;v)=$', vars: ['u', 'v'], valor: '3u+4v', exemplos: [['$3u+4v$ (aula)', '3u+4v'], ['$uv$', 'uv'], ['$u^2+v^2$', 'u^2+v^2'], ['$\\operatorname{sen}(u)\\,v$', 'sen(u) v']] });
           M.caixa('tp', { rot: 'Plano tangente ao gráfico de $h$', valor: true });
-          M.botoes([['Exemplo da aula: $(x;y)=(1;-1)$', () => M.definir({ p: [1, -1], f: 'aula' })]]);
+          M.botoes([['Exemplo da aula: $(x;y)=(1;-1)$', () => M.definir({ p: [1, -1], f: '3u+4v', g: '(x+y; e^x-y)' })]]);
           const est = (S) => {
-            const f = FF[S.f].f, q = g(...S.p), J = CM.jac((x, y) => g(x, y), ...S.p), gr = CM.grad(f, ...q);
+            const f = M.F.f.f, g = M.F.g.f, q = g(...S.p), J = CM.jac((x, y) => g(x, y), ...S.p), gr = CM.grad(f, ...q);
             const Dh = [CM.dot(gr, [J[0][0], J[1][0]]), CM.dot(gr, [J[0][1], J[1][1]])];
-            return { f, q, J, gr, Dh, h: (x, y) => f(...g(x, y)) };
+            return { f, g, q, J, gr, Dh, h: (x, y) => f(...g(x, y)) };
           };
           let escala = null;
           M.cena(A, (C, S) => {
             const { h, Dh } = est(S);
-            if (!escala || escala.f !== S.f) { let m = 0; for (let i = 0; i <= 16; i++) for (let j = 0; j <= 16; j++) m = Math.max(m, Math.abs(h(-W + (2 * W * i) / 16, -W + (2 * W * j) / 16))); escala = { f: S.f, k: 1.5 / m }; }
+            if (!escala || escala.f !== S.f + '|' + S.g) { let m = 0; for (let i = 0; i <= 16; i++) for (let j = 0; j <= 16; j++) { const v = Math.abs(h(-W + (2 * W * i) / 16, -W + (2 * W * j) / 16)); if (isFinite(v)) m = Math.max(m, v); } escala = { f: S.f + '|' + S.g, k: 1.5 / Math.max(m, 1e-9) }; }
             const k = escala.k, [x0, y0] = S.p, z0 = k * h(x0, y0);
             C.eixos({ x: [-W - 0.1, W + 0.3], y: [-W - 0.1, W + 0.3], z: [-1.6, 1.8], nomes: ['x', 'y', 'h'] });
             C.grafico((x, y) => k * h(x, y), -W, W, -W, W, 40, { alfa: 0.62 });
@@ -130,10 +131,10 @@
             P.seta(q, CM.mul(gr, Math.min(1.2, gn) / Math.max(gn, 1e-9)), { cor: cor.ouro, rot: '$∇f$' });
             P.ponto(q, { cor: cor.i, rot: 'g(x; y)' });
           });
-          M.leituras('$h(x;y)=f(x+y;\\,e^x-y)$', (S) => {
+          M.leituras('$h=f\\circ g$', (S) => {
             const { q, J, gr, Dh } = est(S);
-            const aula = S.f === 'aula' && Math.abs(S.p[0] - 1) < 0.02 && Math.abs(S.p[1] + 1) < 0.02;
-            return [['$(x;y)$', '$' + TX.v(S.p, 2) + '$'], ['$g(x;y)=(x+y;\\,e^x-y)$', '$' + TX.v(q, 3) + '$'], ['$Dg=\\begin{bmatrix}1&1\\\\e^x&-1\\end{bmatrix}$', '$' + TX.m(J, 3) + '$'], ['$Df(g(x;y))$', '$' + TX.m([gr], 3) + '$'], '—', ['$Dh=Df(g)\\,Dg$', '$' + TX.m([Dh], 3) + '$', 'forte'], aula ? 'Com $\\nabla f(0;e+1)=(3;4)$: $Dh(1;-1)=[\\,3+4e\\ \\ -1\\,]=[\\,' + TX.n(3 + 4 * E, 3) + '\\ \\ -1\\,]$.' : 'Cada entrada de $Dh$ é $\\nabla f\\cdot$ (uma coluna de $Dg$): $\\frac{\\partial h}{\\partial x}=\\frac{\\partial f}{\\partial u}\\frac{\\partial u}{\\partial x}+\\frac{\\partial f}{\\partial v}\\frac{\\partial v}{\\partial x}$. São os declives das setas laranja e verde no gráfico.'];
+            const aula = S.f === '3u+4v' && S.g === '(x+y; e^x-y)' && Math.abs(S.p[0] - 1) < 0.02 && Math.abs(S.p[1] + 1) < 0.02;
+            return [['$(x;y)$', '$' + TX.v(S.p, 2) + '$'], ['$g(x;y)$', '$' + TX.v(q, 3) + '$'], ['$Dg(x;y)$', '$' + TX.m(J, 3) + '$'], ['$Df(g(x;y))$', '$' + TX.m([gr], 3) + '$'], '—', ['$Dh=Df(g)\\,Dg$', '$' + TX.m([Dh], 3) + '$', 'forte'], aula ? 'Com $\\nabla f(0;e+1)=(3;4)$: $Dh(1;-1)=[\\,3+4e\\ \\ -1\\,]=[\\,' + TX.n(3 + 4 * E, 3) + '\\ \\ -1\\,]$.' : 'Cada entrada de $Dh$ é $\\nabla f\\cdot$ (uma coluna de $Dg$): $\\frac{\\partial h}{\\partial x}=\\frac{\\partial f}{\\partial u}\\frac{\\partial u}{\\partial x}+\\frac{\\partial f}{\\partial v}\\frac{\\partial v}{\\partial x}$. São os declives das setas laranja e verde no gráfico.'];
           });
           M.texto('<b class="t">Composição de Jacobianas</b><p>$\\mathbb R^n\\xrightarrow{g}\\mathbb R^p\\xrightarrow{f}\\mathbb R^m$, com $g$ diferenciável em $a$ e $f$ diferenciável em $g(a)$:</p>$$D(f\\circ g)(a)=Df(g(a))\\,Dg(a),\\qquad (m\\times p)(p\\times n)=m\\times n.$$<p>Na vista 3D, $Dh$ dá os declives do plano tangente ao gráfico de $h$: $\\frac{\\partial h}{\\partial x}$ na direção de $x$ (laranja) e $\\frac{\\partial h}{\\partial y}$ na de $y$ (verde).</p><p>Exemplo das teóricas: $t\\mapsto(t;t^2)\\mapsto f(t;t^2)$, com $Df(1;1)=\\begin{bmatrix}1&2\\\\3&4\\\\5&6\\end{bmatrix}$ e $Dg(1)=\\begin{bmatrix}1\\\\2\\end{bmatrix}$: $D(f\\circ g)(1)=(5;11;17)$.</p>', 'nota');
           M.legenda([[cor.u, '$x$ a variar: $Dg\\,e_1$ e $\\partial h/\\partial x$'], [cor.v, '$y$ a variar: $Dg\\,e_2$ e $\\partial h/\\partial y$'], [cor.ouro, '$\\nabla f$ e plano tangente'], [cor.n, 'nível de $f$ por $g(x;y)$']]);
